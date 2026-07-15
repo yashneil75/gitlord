@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 
-from gitlord.schemas import CommitTrailers, SessionConfig, Turn, TurnRole
+from gitlord.schemas import SessionConfig, Turn, TurnRole
 from gitlord.git import GitRepo
 
 
@@ -35,17 +33,23 @@ class Session:
     ) -> Session:
         log_repo = GitRepo(config.log_repo_path)
         workspace_repo = GitRepo(config.workspace_repo_path)
+
+        branch = f"refs/agents/{session_id}"
+        if log_repo.ref_exists(branch):
+            raise ValueError(f"Session {session_id} already exists")
+
+        log_repo.create_orphan_branch(branch)
+
         session = cls(log_repo, workspace_repo, config, session_id)
 
-        if not log_repo.ref_exists(session.branch):
-            system_turn = Turn(
-                turn=0,
-                role=TurnRole.system,
-                content=f"Session started at {datetime.now(timezone.utc).isoformat()}",
-                agent_id=session_id,
-                parent_agent_id=None,
-            )
-            session._commit_turn(system_turn)
+        system_turn = Turn(
+            turn=0,
+            role=TurnRole.system,
+            content=f"Session started at {datetime.now(timezone.utc).isoformat()}",
+            agent_id=session_id,
+            parent_agent_id=None,
+        )
+        session._commit_turn(system_turn)
 
         return session
 
@@ -62,47 +66,26 @@ class Session:
             raise ValueError(f"Session {session_id} not found")
         return cls(log_repo, workspace_repo, config, session_id)
 
-    def _commit_turn(self, turn: Turn) -> str:
-        turn_json = turn.model_dump_json(exclude_none=True)
-        blob_sha = self.log_repo.hash_object(turn_json)
-
+    def _commit_turn(self, turn: Turn, subagent_result: str | None = None) -> str:
         parent_sha = self.log_repo.read_ref(self.branch)
-        turn_number = turn.turn
-        role = turn.role.value
-
-        tags = turn.tags or []
-        trailers = CommitTrailers(
-            turn=turn_number,
-            role=role,
+        new_sha = self.log_repo.commit_turn(
+            parent_sha=parent_sha,
+            turn=turn,
             agent_id=turn.agent_id,
             parent_agent_id=turn.parent_agent_id,
-            tool=turn.tool_name,
-            tokens_in=turn.tokens_in,
-            tokens_out=turn.tokens_out,
-            workspace_commit=turn.workspace_commit,
-            tags=tags,
+            subagent_result=subagent_result,
         )
 
-        def rebuild(new_parent: str) -> str:
-            return self.log_repo.commit_tree_from_turns(
-                parent_sha=new_parent,
-                turn_number=turn_number,
-                role=role,
-                blob_sha=blob_sha,
-                trailers=trailers,
-                tags=tags,
+        def rebuild(old_parent: str) -> str:
+            return self.log_repo.commit_turn(
+                parent_sha=old_parent,
+                turn=turn,
+                agent_id=turn.agent_id,
+                parent_agent_id=turn.parent_agent_id,
+                subagent_result=subagent_result,
             )
 
-        commit_sha = self.log_repo.commit_tree_from_turns(
-            parent_sha=parent_sha,
-            turn_number=turn_number,
-            role=role,
-            blob_sha=blob_sha,
-            trailers=trailers,
-            tags=tags,
-        )
-
-        return self.log_repo.update_ref_cas(self.branch, commit_sha, parent_sha, rebuild_fn=rebuild)
+        return self.log_repo.update_ref_cas(self.branch, new_sha, parent_sha, rebuild_fn=rebuild)
 
     def _next_turn_number(self) -> int:
         current = self.log_repo.read_ref(self.branch)
@@ -210,6 +193,10 @@ class Session:
         if not trailers:
             raise ValueError(f"Commit {target_sha} has no valid trailers")
 
+        commits = self.log_repo.log_branch(self.branch, format="%H", reverse=False)
+        if target_sha not in commits:
+            raise ValueError(f"Commit {target_sha} is not on branch {self.branch}")
+
         new_branch_name = branch_name or f"{self.branch}-rewind-{target_sha[:12]}"
 
         if self.log_repo.ref_exists(new_branch_name):
@@ -229,24 +216,19 @@ class Session:
 
     def get_turns(self, start: int = 0, end: int | None = None) -> list[Turn]:
         commits = self.log_repo.log_branch(self.branch, format="%H", reverse=True)
-        turns = []
+        turns: list[Turn] = []
         for sha in commits:
             trailers = self.log_repo.parse_trailers(sha)
-            if trailers and trailers.turn >= start:
-                if end is not None and trailers.turn > end:
-                    break
-                turn_content = self._read_turn_from_commit(sha)
-                if turn_content:
-                    turns.append(turn_content)
+            if not trailers:
+                continue
+            if trailers.turn < start:
+                continue
+            if end is not None and trailers.turn > end:
+                break
+            turn = self.log_repo.get_turn_at_commit(sha)
+            if turn:
+                turns.append(turn)
         return turns
-
-    def _read_turn_from_commit(self, sha: str) -> Optional[Turn]:
-        turn_filename = self.log_repo.get_turn_filename(sha)
-        if not turn_filename:
-            return None
-        content = self.log_repo.get_turn_content(sha, turn_filename)
-        data = json.loads(content)
-        return Turn(**data)
 
     def get_branch_path(self) -> str:
         return self._branch
