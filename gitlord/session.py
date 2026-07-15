@@ -186,6 +186,7 @@ class Session:
         return self._commit_turn(turn)
 
     def rewind(self, target_sha: str, branch_name: str | None = None) -> Session:
+        target_sha = self.log_repo.rev_parse(target_sha)
         if not self.log_repo.commit_exists(target_sha):
             raise ValueError(f"Commit {target_sha} not found")
 

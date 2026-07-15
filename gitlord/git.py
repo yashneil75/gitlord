@@ -166,6 +166,9 @@ class GitRepo:
         except GitError:
             return False
 
+    def rev_parse(self, ref: str) -> str:
+        return _git("rev-parse", ref, repo=self.path)
+
     def log_branch(
         self,
         ref: str,

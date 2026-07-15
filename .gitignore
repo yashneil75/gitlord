@@ -4,3 +4,5 @@ __pycache__/
 .chroma/
 index.json
 .superpowers/
+log/
+gitlord.json

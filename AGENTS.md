@@ -5,6 +5,7 @@
 ### What was done
 - Scaffolded the full gitlord package from SPEC.md (12 modules + pyproject.toml)
 - All modules import cleanly
+- Task 6: Index rebuild + CLI tests, added `GitRepo.rev_parse()` for SHA resolution
 
 ### File Map
 
@@ -40,3 +41,5 @@
 - SubagentManager trim skips branches with depth <= 3 (root) and active subagents
 - Context assembler uses heuristic token counting (len//4) — not accurate; needs real tokenizer
 - MCPMon tool discovery is stubbed — needs actual MCP protocol handshake for real servers
+- `Session.rewind` does `rev_parse(target_sha)` to accept abbreviated SHAs — this was added to fix CLI rewind with log output
+- CLI tests use `cwd_isolation` fixture (chdir to tmp_path) — tests must be serial; parallel execution would break due to shared CWD
