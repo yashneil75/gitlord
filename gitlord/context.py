@@ -22,29 +22,53 @@ class DedupIndex:
     def invalidate(self, branch: str, path: str) -> None:
         self._map.pop((branch, path), None)
 
+    def invalidate_branch(self, branch: str) -> None:
+        keys = [k for k in self._map if k[0] == branch]
+        for k in keys:
+            del self._map[k]
+
     def rebuild_from_log(
         self,
         repo: GitRepo,
         branch: str,
         max_commits: int = 1000,
     ) -> None:
-        commits = repo.log_branch(branch, format="%H %s", reverse=True)
-        for entry in commits[-max_commits:]:
-            sha = entry.split()[0]
+        commits = repo.log_branch(branch, format="%H", reverse=True)
+        for i, sha in enumerate(commits[-max_commits:]):
             trailers = repo.parse_trailers(sha)
             if not trailers:
                 continue
-            turn_content = self._read_turn_tool_call(repo, sha, trailers)
-            if turn_content and "path" in turn_content.get("tool_input", {}):
-                path = turn_content["tool_input"]["path"]
-                content = turn_content.get("content", "")
-                content_hash = hashlib.sha256(content.encode()).hexdigest()
-                self.set(branch, path, trailers.turn, content_hash)
+            turn_data = self._read_turn_json(repo, sha)
+            if not turn_data:
+                continue
+            if turn_data.get("role") != "tool_call":
+                continue
+            tool_input = turn_data.get("tool_input")
+            if not isinstance(tool_input, dict):
+                continue
+            path = tool_input.get("path")
+            if not path:
+                continue
+            for j in range(i + 1, min(i + 5, len(commits))):
+                next_sha = commits[j]
+                next_trailers = repo.parse_trailers(next_sha)
+                if not next_trailers:
+                    continue
+                next_turn = self._read_turn_json(repo, next_sha)
+                if next_turn and next_turn.get("role") == "tool_result":
+                    result_content = (
+                        next_turn.get("content")
+                        or next_turn.get("tool_output")
+                        or ""
+                    )
+                    content_hash = hashlib.sha256(
+                        str(result_content).encode()
+                    ).hexdigest()
+                    self.set(branch, path, trailers.turn, content_hash)
+                    break
 
     @staticmethod
-    def _read_turn_tool_call(
-        repo: GitRepo, sha: str, trailers: Any
-    ) -> dict | None:
+    def _read_turn_json(repo: GitRepo, sha: str) -> dict | None:
         turn_filename = repo.get_turn_filename(sha)
         if not turn_filename:
             return None
@@ -98,13 +122,15 @@ class ContextAssembler:
         budget_tokens: int | None = None,
         rag_results: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
-        cached = self.cache.get(branch, up_to_turn or -1)
+        cache_key = up_to_turn if up_to_turn is not None else -1
+        cached = self.cache.get(branch, cache_key)
         if cached:
             return cached.messages
 
         commits = self.log_repo.log_branch(branch, format="%H", reverse=True)
-        messages: list[dict[str, Any]] = []
-        seen_summaries: dict[str, str] = {}
+
+        collected: list[tuple[Turn, str]] = []
+        summary_exclusions: dict[str, str] = {}
 
         for sha in commits:
             trailers = self.log_repo.parse_trailers(sha)
@@ -113,22 +139,25 @@ class ContextAssembler:
             if up_to_turn is not None and trailers.turn > up_to_turn:
                 break
 
-            turn = self._read_turn(self.log_repo, sha, trailers)
+            turn = self._read_turn(self.log_repo, sha)
             if not turn:
                 continue
 
             if turn.role == TurnRole.summary and turn.summarizes:
                 for s in turn.summarizes:
-                    seen_summaries[s] = turn.content
+                    summary_exclusions[s] = turn.content
+            else:
+                collected.append((turn, sha))
 
-            if self._should_skip(turn, seen_summaries, sha):
+        messages: list[dict[str, Any]] = []
+        for turn, sha in collected:
+            if sha in summary_exclusions:
                 continue
-
-            message = self._turn_to_message(turn, branch, sha, trailers, messages)
+            message = self._turn_to_message(turn, sha)
             if message:
                 messages.append(message)
 
-        messages = self._apply_dedup(branch, messages)
+        messages = self._apply_dedup(messages)
         messages = self._apply_budget(messages, budget_tokens)
 
         if rag_results:
@@ -142,12 +171,12 @@ class ContextAssembler:
             self.cache.set(ContextCacheEntry(
                 branch=branch,
                 turn_n=up_to_turn,
-                messages=list(messages),
+                messages=messages,
             ))
 
         return messages
 
-    def _read_turn(self, repo: GitRepo, sha: str, trailers: Any) -> Optional[Turn]:
+    def _read_turn(self, repo: GitRepo, sha: str) -> Optional[Turn]:
         turn_filename = repo.get_turn_filename(sha)
         if not turn_filename:
             return None
@@ -158,20 +187,10 @@ class ContextAssembler:
         except (json.JSONDecodeError, Exception):
             return None
 
-    def _should_skip(
-        self, turn: Turn, seen_summaries: dict[str, str], sha: str
-    ) -> bool:
-        if turn.role == TurnRole.summary:
-            return True
-        return sha in seen_summaries
-
     def _turn_to_message(
         self,
         turn: Turn,
-        branch: str,
         sha: str,
-        trailers: Any,
-        messages: list[dict[str, Any]],
     ) -> dict[str, Any] | None:
         if turn.role == TurnRole.system:
             return {"role": "system", "content": turn.content}
@@ -185,7 +204,7 @@ class ContextAssembler:
                 "content": None,
                 "tool_calls": [
                     {
-                        "id": f"call_{sha[:12]}_{turn.turn}",
+                        "id": f"call_t{turn.turn}",
                         "type": "function",
                         "function": {
                             "name": turn.tool_name or "unknown",
@@ -197,51 +216,70 @@ class ContextAssembler:
         elif turn.role == TurnRole.tool_result:
             return {
                 "role": "tool",
-                "tool_call_id": f"call_{sha[:12]}_{turn.turn}",
+                "tool_call_id": f"call_t{turn.turn - 1}",
                 "content": turn.tool_output if turn.tool_output else turn.content,
             }
         return None
 
+    @staticmethod
+    def _parse_turn_from_call_id(call_id: str) -> int:
+        if call_id.startswith("call_t"):
+            rest = call_id.removeprefix("call_t")
+            try:
+                return int(rest)
+            except ValueError:
+                pass
+        return 0
+
     def _apply_dedup(
-        self, branch: str, messages: list[dict[str, Any]]
+        self, messages: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
+        call_paths: dict[str, tuple[str, int]] = {}
         read_index: dict[str, tuple[int, str]] = {}
 
         for msg in messages:
-            if msg.get("role") == "tool" and "content" in msg:
-                path = self._extract_path(msg)
-                if path:
+            if msg.get("role") == "assistant" and msg.get("tool_calls"):
+                for tc in msg["tool_calls"]:
+                    args = json.loads(tc["function"]["arguments"])
+                    if isinstance(args, dict):
+                        path = args.get("path")
+                        if path:
+                            turn_n = self._parse_turn_from_call_id(tc["id"])
+                            call_paths[tc["id"]] = (path, turn_n)
+                result.append(msg)
+
+            elif msg.get("role") == "tool":
+                tc_id = msg.get("tool_call_id", "")
+                if tc_id in call_paths:
+                    path, turn_n = call_paths[tc_id]
                     content = msg.get("content", "")
                     content_hash = hashlib.sha256(
-                        content.encode() if isinstance(content, str) else str(content).encode()
+                        str(content).encode()
                     ).hexdigest()
 
                     prev = read_index.get(path)
                     if prev and prev[1] == content_hash:
                         result.append({
                             "role": "tool",
-                            "content": f"[see turn at {prev[0]} — content unchanged]",
-                            "tool_call_id": msg.get("tool_call_id", ""),
+                            "content": f"[see turn {prev[0]} — content unchanged]",
+                            "tool_call_id": tc_id,
                         })
                     else:
-                        read_index[path] = (prev[0] + 1 if prev else 0, content_hash)
+                        read_index[path] = (turn_n, content_hash)
                         result.append(msg)
                 else:
                     result.append(msg)
+
             else:
                 result.append(msg)
 
         return result
 
-    def _extract_path(self, msg: dict[str, Any]) -> Optional[str]:
-        return None
-
     def _apply_budget(
         self,
         messages: list[dict[str, Any]],
         budget_tokens: int | None,
-        approx_tokens_per_msg: int = 500,
     ) -> list[dict[str, Any]]:
         if budget_tokens is None:
             return messages
@@ -249,7 +287,7 @@ class ContextAssembler:
         total = 0
         result: list[dict[str, Any]] = []
         for msg in reversed(messages):
-            content = msg.get("content", "")
+            content = msg.get("content") or ""
             tokens = len(str(content)) // 4
             total += tokens
             if total > budget_tokens:
@@ -261,7 +299,10 @@ class ContextAssembler:
     def _format_rag_context(self, results: list[dict[str, Any]]) -> str:
         parts = []
         for r in results:
-            parts.append(f"[{r.get('type', 'doc')}] (score: {r.get('score', 0):.3f})\n{r.get('content', '')}")
+            parts.append(
+                f"[{r.get('type', 'doc')}] (score: {r.get('score', 0):.3f})\n"
+                f"{r.get('content', '')}"
+            )
         return "\n\n".join(parts)
 
     def compute_summary(

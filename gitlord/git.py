@@ -468,10 +468,11 @@ class GitRepo:
         if turns_sha is None:
             return None
         turn_entries = self.ls_tree(turns_sha)
+        last_name: str | None = None
         for _mode, _typ, _blob_sha, name in turn_entries:
             if TURN_FILENAME_RE.match(name):
-                return f"turns/{name}"
-        return None
+                last_name = name
+        return f"turns/{last_name}" if last_name else None
 
     def get_turn_content(self, sha: str, turn_filename: str) -> str:
         return _git("show", f"{sha}:{turn_filename}", repo=self.path)
