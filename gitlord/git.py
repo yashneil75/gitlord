@@ -288,7 +288,9 @@ class GitRepo:
         )
         return self.commit_tree(tree_sha, message, parent=parent_sha)
 
-    def update_ref_cas(self, ref: str, new_sha: str, old_sha: str | None) -> str:
+    def update_ref_cas(
+        self, ref: str, new_sha: str, old_sha: str | None, rebuild_fn=None
+    ) -> str:
         max_retries = 3
         for attempt in range(max_retries):
             try:
@@ -302,9 +304,13 @@ class GitRepo:
                 if (
                     "cannot lock ref" in err or "unexpected object" in err
                 ) and attempt < max_retries - 1:
+                    if rebuild_fn is None:
+                        raise CASError(f"CAS update failed for {ref}: {err}") from e
                     old_sha = self.read_ref(ref)
+                    new_sha = rebuild_fn(old_sha)
                     continue
                 raise CASError(f"CAS update failed for {ref}: {err}") from e
+        return new_sha  # unreachable
 
     def create_orphan_branch(self, ref: str) -> str:
         empty_tree = self.mktree([])
@@ -330,7 +336,7 @@ class GitRepo:
             _mode, _typ, turn_blob_sha, _name = turn_entries[-1]
             content = _git("show", turn_blob_sha, repo=self.path)
             return Turn.model_validate_json(content)
-        except (GitError, Exception):
+        except GitError:
             return None
 
     def get_turn_content_raw(self, sha: str, turn_number: int) -> str | None:

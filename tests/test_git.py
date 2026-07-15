@@ -142,6 +142,31 @@ class TestGitPlumbing:
         result = bare_repo.update_ref_cas("refs/agents/cas-ok", commit_sha, root_sha)
         assert result == commit_sha
 
+    def test_update_ref_cas_retry_with_rebuild(self, bare_repo: GitRepo):
+        root_sha = bare_repo.create_orphan_branch("refs/agents/cas-rebuild")
+
+        turn0 = Turn(
+            turn=0, role=TurnRole.system, content="first", agent_id="agent"
+        )
+        commit0 = bare_repo.commit_turn(root_sha, turn0, "agent", None)
+
+        bare_repo.update_ref("refs/agents/cas-rebuild", commit0)
+
+        turn1 = Turn(
+            turn=1, role=TurnRole.user, content="second", agent_id="agent"
+        )
+        stale_commit = bare_repo.commit_turn(root_sha, turn1, "agent", None)
+
+        def rebuild(new_parent: str) -> str:
+            return bare_repo.commit_turn(new_parent, turn1, "agent", None)
+
+        result = bare_repo.update_ref_cas(
+            "refs/agents/cas-rebuild", stale_commit, root_sha, rebuild_fn=rebuild
+        )
+        assert result != stale_commit
+        assert bare_repo.commit_exists(result)
+        assert bare_repo.read_ref("refs/agents/cas-rebuild") == result
+
     def test_update_ref_cas_failure(self, bare_repo: GitRepo):
         bare_repo.create_orphan_branch("refs/agents/cas-fail")
         current = bare_repo.read_ref("refs/agents/cas-fail")

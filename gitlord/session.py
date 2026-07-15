@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Optional
 
 from gitlord.schemas import CommitTrailers, SessionConfig, Turn, TurnRole
-from gitlord.git import GitRepo, CASError
+from gitlord.git import GitRepo
 
 
 class Session:
@@ -83,6 +83,16 @@ class Session:
             tags=tags,
         )
 
+        def rebuild(new_parent: str) -> str:
+            return self.log_repo.commit_tree_from_turns(
+                parent_sha=new_parent,
+                turn_number=turn_number,
+                role=role,
+                blob_sha=blob_sha,
+                trailers=trailers,
+                tags=tags,
+            )
+
         commit_sha = self.log_repo.commit_tree_from_turns(
             parent_sha=parent_sha,
             turn_number=turn_number,
@@ -92,16 +102,7 @@ class Session:
             tags=tags,
         )
 
-        old_sha = self.log_repo.read_ref(self.branch)
-        try:
-            self.log_repo.update_ref(self.branch, commit_sha, old_sha)
-        except CASError:
-            parent_sha = self.log_repo.read_ref(self.branch)
-            turn_number = self._next_turn_number()
-            turn.turn = turn_number
-            return self._commit_turn(turn)
-
-        return commit_sha
+        return self.log_repo.update_ref_cas(self.branch, commit_sha, parent_sha, rebuild_fn=rebuild)
 
     def _next_turn_number(self) -> int:
         current = self.log_repo.read_ref(self.branch)
