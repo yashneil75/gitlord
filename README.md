@@ -9,9 +9,9 @@ pip install gitlord[all]
 ```
 
 ```python
-from gitlord import Turn, TurnRole, Session, load_config
+from gitlord import Session, SessionConfig, Turn, TurnRole
 
-config = load_config()
+config = SessionConfig(log_repo_path="log")
 session = Session.create("my-agent", config)
 session.append_user_turn("Hello, what's the weather in London?")
 

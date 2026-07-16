@@ -5,4 +5,5 @@ __pycache__/
 index.json
 .superpowers/
 log/
+test_log/
 gitlord.json
