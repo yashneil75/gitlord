@@ -56,7 +56,7 @@ class TestCliTree:
         runner.invoke(app, ["run", "test", "--session", "tree-test"])
         result = runner.invoke(app, ["tree", "tree-test"])
         assert result.exit_code == 0
-        assert "refs/agents/tree-test" in result.stdout
+        assert "tree-test" in result.stdout
 
 
 class TestCliShow:

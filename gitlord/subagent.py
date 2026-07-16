@@ -205,7 +205,9 @@ class SubagentManager:
     def _get_depth(self, branch: str) -> int:
         parts = branch.split("/")
         agent_parts = [p for p in parts if p not in ("refs", "agents")]
-        return len(agent_parts)
+        if agent_parts and agent_parts[0] == "sub":
+            agent_parts = agent_parts[1:]
+        return max(0, len(agent_parts) - 1)
 
     def is_active(self, subagent_id: str) -> bool:
         with self._lock:

@@ -64,7 +64,7 @@ class TestSubagentSpawn:
     def test_spawn_enforces_depth_limit(
         self, manager: SubagentManager, session: Session
     ):
-        manager.config.agent.max_depth = 1
+        manager.config.agent.max_depth = 0
         with pytest.raises(ValueError, match="Max agent depth"):
             manager.spawn(session.branch, session.session_id)
 
@@ -271,16 +271,16 @@ class TestSubagentTrim:
 
 class TestDepthCalculation:
     def test_root_session_depth(self, manager: SubagentManager):
-        assert manager._get_depth("refs/agents/session-123") == 1
+        assert manager._get_depth("refs/agents/session-123") == 0
 
     def test_one_level_subagent_depth(self, manager: SubagentManager):
         depth = manager._get_depth(
-            "refs/agents/session-123/subagent-456"
+            "refs/agents/sub/session-123/subagent-456"
         )
-        assert depth == 2
+        assert depth == 1
 
     def test_two_level_subagent_depth(self, manager: SubagentManager):
         depth = manager._get_depth(
-            "refs/agents/session-123/subagent-456/subagent-789"
+            "refs/agents/sub/session-123/subagent-456/subagent-789"
         )
-        assert depth == 3
+        assert depth == 2

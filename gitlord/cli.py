@@ -85,12 +85,18 @@ if HAS_TYPER:
     ):
         """Render agent/subagent branch structure"""
         sess = _get_session(session_id)
-        refs = sess.log_repo.list_refs(f"refs/agents/{session_id}")
-        for ref in sorted(refs):
-            depth = ref.count("/") - 2
+        refs = list(sess.log_repo.list_refs(f"refs/agents/{session_id}"))
+        sub_refs = list(sess.log_repo.list_refs(f"refs/agents/sub/{session_id}/"))
+        for ref in sorted(set(refs + sub_refs)):
+            if ref.startswith(f"refs/agents/sub/{session_id}/"):
+                depth = ref.count("/") - 4
+                display = ref.split("/")[-1]
+            else:
+                depth = 0
+                display = ref.split("/")[-1]
             indent = "  " * depth
             sha = sess.log_repo.read_ref(ref) or "?"
-            print(f"{indent}{ref} @ {sha[:12]}")
+            print(f"{indent}{display} @ {sha[:12]}")
 
     @app.command()
     def show(

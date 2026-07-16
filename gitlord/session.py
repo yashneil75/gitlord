@@ -68,6 +68,7 @@ class Session:
 
     def _commit_turn(self, turn: Turn, subagent_result: str | None = None) -> str:
         parent_sha = self.log_repo.read_ref(self.branch)
+        turn.turn = self._next_turn_number()
         new_sha = self.log_repo.commit_turn(
             parent_sha=parent_sha,
             turn=turn,
@@ -77,6 +78,7 @@ class Session:
         )
 
         def rebuild(old_parent: str) -> str:
+            turn.turn = self._next_turn_number()
             return self.log_repo.commit_turn(
                 parent_sha=old_parent,
                 turn=turn,
