@@ -9,7 +9,7 @@ description = "Agent orchestration framework with git-backed storage"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
-    {name = "Yashneil Gajjala", email = "yashneil75@users.noreply.github.com"}
+    {name = "Yashneil Gajjala", email = "yashneil75@gmail.com"}
 ]
 license = {text = "MIT"}
 classifiers = [
