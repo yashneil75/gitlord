@@ -1,15 +1,48 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools-scm>=8"]
-build-backend = "setuptools.backends._legacy:_Backend"
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "gitlord"
 version = "0.1.0"
 description = "Agent orchestration framework with git-backed storage"
+readme = "README.md"
 requires-python = ">=3.11"
+authors = [
+    {name = "Yashneil Gajjala", email = "yashneil75@users.noreply.github.com"}
+]
+license = {text = "MIT"}
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
+]
+keywords = [
+    "git",
+    "agent",
+    "orchestration",
+    "ai",
+    "mcp",
+    "litellm",
+    "chromadb",
+    "rag",
+    "rewindable",
+    "session",
+]
 dependencies = [
     "pydantic>=2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/yashneil75/gitlord"
+Repository = "https://github.com/yashneil75/gitlord"
+Issues = "https://github.com/yashneil75/gitlord/issues"
 
 [project.optional-dependencies]
 all = [
