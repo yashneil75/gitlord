@@ -8,6 +8,19 @@ from typing import Any, Optional
 from gitlord.schemas import Turn, TurnRole, SessionConfig
 from gitlord.git import GitRepo
 
+try:
+    import tiktoken
+    HAS_TIKTOKEN = True
+except ImportError:
+    HAS_TIKTOKEN = False
+
+
+def count_tokens(text: str) -> int:
+    if HAS_TIKTOKEN:
+        enc = tiktoken.get_encoding("cl100k_base")
+        return len(enc.encode(text))
+    return len(text) // 4
+
 
 @dataclass
 class DedupIndex:
@@ -288,7 +301,7 @@ class ContextAssembler:
         result: list[dict[str, Any]] = []
         for msg in reversed(messages):
             content = msg.get("content") or ""
-            tokens = len(str(content)) // 4
+            tokens = count_tokens(str(content))
             total += tokens
             if total > budget_tokens:
                 break

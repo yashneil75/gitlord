@@ -145,7 +145,6 @@ class VectorIndex:
                 query_texts=[query_text],
                 n_results=n_results,
                 where=where if where else None,
-                lambda_mult=diversity,
             )
         except Exception as e:
             raise ChromaDBError(f"MMR query failed: {e}") from e
@@ -184,7 +183,9 @@ class VectorIndex:
         return self._collection.count()
 
     def clear(self) -> None:
-        self._collection.delete(where={})
+        all_ids = self._collection.get()["ids"]
+        if all_ids:
+            self._collection.delete(ids=all_ids)
 
     def _chunk(self, text: str) -> list[str]:
         if not text:
