@@ -1,15 +1,25 @@
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
-import os
-import signal
-import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, Optional
+
+try:
+    from mcp.client.stdio import stdio_client, StdioServerParameters
+    from mcp.client.session import ClientSession
+    from mcp.types import TextContent
+
+    _MCP_AVAILABLE = True
+except ImportError:
+    _MCP_AVAILABLE = False
+    stdio_client = None  # type: ignore
+    StdioServerParameters = None  # type: ignore
+    ClientSession = None  # type: ignore
+    TextContent = None  # type: ignore
 
 from gitlord.schemas import MCPServerConfig
 
@@ -35,14 +45,10 @@ class ToolInfo:
 class ServerInstance:
     config: MCPServerConfig
     state: ServerState = ServerState.STOPPED
-    process: Optional[subprocess.Popen] = None
     tools: dict[str, ToolInfo] = field(default_factory=dict)
     restart_count: int = 0
     last_error: Optional[str] = None
-    stdin_lock: threading.Lock = field(default_factory=threading.Lock)
-    stdout_buffer: list[str] = field(default_factory=list)
-    stdout_lock: threading.Lock = field(default_factory=threading.Lock)
-    _stdout_thread: Optional[threading.Thread] = None
+    session: Optional[ClientSession] = None
 
 
 class MCPMon:
@@ -51,22 +57,23 @@ class MCPMon:
         servers: list[MCPServerConfig],
         on_tool_change: Optional[Callable[[], None]] = None,
     ):
+        if not _MCP_AVAILABLE:
+            raise ImportError(
+                "MCPMon requires the 'mcp' package. Install it with: pip install gitlord[mcp]"
+            )
         self._servers: dict[str, ServerInstance] = {
             s.name: ServerInstance(config=s) for s in servers
         }
         self._on_tool_change = on_tool_change
         self._lock = threading.Lock()
         self._running = False
-
-    def start_all(self) -> None:
-        self._running = True
-        for name in list(self._servers.keys()):
-            self.start_server(name)
-
-    def stop_all(self) -> None:
-        self._running = False
-        for name in list(self._servers.keys()):
-            self.stop_server(name)
+        self._loop = asyncio.new_event_loop()
+        self._loop_thread = threading.Thread(
+            target=self._loop.run_forever, daemon=True, name="mcp-event-loop"
+        )
+        self._loop_thread.start()
+        self._stop_events: dict[str, asyncio.Event] = {}
+        self._lifecycle_tasks: dict[str, asyncio.Task] = {}
 
     def start_server(self, name: str) -> None:
         inst = self._servers.get(name)
@@ -77,71 +84,127 @@ class MCPMon:
 
         inst.state = ServerState.STARTING
         try:
-            env = os.environ.copy()
-            if inst.config.env:
-                env.update(inst.config.env)
-
-            proc = subprocess.Popen(
-                [inst.config.command] + inst.config.args,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env=env,
-                text=True,
+            future = asyncio.run_coroutine_threadsafe(
+                self._start_server_async(name), self._loop
             )
-            inst.process = proc
-            inst.stdout_buffer = []
-            inst.restart_count += 1
-
-            inst._stdout_thread = threading.Thread(
-                target=self._stdout_reader,
-                args=(name,),
-                daemon=True,
-            )
-            inst._stdout_thread.start()
-
-            self._discover_tools(name)
-
-            inst.state = ServerState.RUNNING
-
-            threading.Thread(
-                target=self._monitor_server,
-                args=(name,),
-                daemon=True,
-            ).start()
-
+            future.result(timeout=30)
         except Exception as e:
             inst.state = ServerState.STOPPED
             inst.last_error = str(e)
             logger.error(f"Failed to start MCP server {name}: {e}")
             raise
 
+    async def _start_server_async(self, name: str) -> None:
+        stop_event = asyncio.Event()
+        self._stop_events[name] = stop_event
+        ready: asyncio.Future[bool] = self._loop.create_future()
+
+        task = asyncio.ensure_future(
+            self._server_lifecycle(name, ready, stop_event)
+        )
+        self._lifecycle_tasks[name] = task
+
+        try:
+            await ready
+        except Exception:
+            self._lifecycle_tasks.pop(name, None)
+            self._stop_events.pop(name, None)
+            raise
+
+    async def _server_lifecycle(
+        self,
+        name: str,
+        ready: asyncio.Future[bool],
+        stop_event: asyncio.Event,
+    ) -> None:
+        inst = self._servers[name]
+        try:
+            params = StdioServerParameters(
+                command=inst.config.command,
+                args=inst.config.args,
+                env=inst.config.env,
+            )
+
+            async with stdio_client(params) as (read, write):
+                async with ClientSession(read, write) as session:
+                    inst.session = session
+                    await session.initialize()
+                    tools_result = await session.list_tools()
+                    inst.tools = {}
+                    for t in tools_result.tools:
+                        inst.tools[t.name] = ToolInfo(
+                            name=t.name,
+                            description=t.description or "",
+                            input_schema=t.inputSchema,
+                        )
+                    inst.state = ServerState.RUNNING
+                    if not ready.done():
+                        ready.set_result(True)
+
+                    await stop_event.wait()
+
+        except asyncio.CancelledError:
+            inst.state = ServerState.STOPPED
+            if not ready.done():
+                ready.set_exception(RuntimeError("Server startup cancelled"))
+        except Exception as e:
+            inst.state = ServerState.STOPPED
+            inst.last_error = str(e)
+            if not ready.done():
+                ready.set_exception(e)
+            else:
+                logger.warning(f"MCP server {name} lost, restarting: {e}")
+                self.restart_server(name)
+        finally:
+            inst.session = None
+            self._lifecycle_tasks.pop(name, None)
+            self._stop_events.pop(name, None)
+
     def stop_server(self, name: str) -> None:
         inst = self._servers.get(name)
-        if not inst or not inst.process:
+        if not inst or inst.state == ServerState.STOPPED:
             return
 
         inst.state = ServerState.STOPPING
         try:
-            self._send_notification(name, "shutdown")
+            stop_event = self._stop_events.get(name)
+            if stop_event is not None:
+                self._loop.call_soon_threadsafe(stop_event.set)
+
+            task = self._lifecycle_tasks.get(name)
+            if task is not None:
+                future = asyncio.run_coroutine_threadsafe(
+                    self._await_task(task), self._loop
+                )
+                future.result(timeout=10)
+        except Exception as e:
+            logger.warning(f"Error stopping server {name}: {e}")
+        finally:
+            inst.state = ServerState.STOPPED
+            inst.session = None
+            inst.tools = {}
+
+    async def _await_task(self, task: asyncio.Task) -> None:
+        try:
+            await task
         except Exception:
             pass
 
-        try:
-            if os.name == "nt":
-                inst.process.terminate()
-            else:
-                os.kill(inst.process.pid, signal.SIGTERM)
-            inst.process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            inst.process.kill()
-            inst.process.wait(timeout=2)
-        except Exception:
-            pass
-        finally:
-            inst.state = ServerState.STOPPED
-            inst.process = None
-            inst.stdout_buffer = []
+    def start_all(self) -> None:
+        self._running = True
+        for name in list(self._servers.keys()):
+            self.start_server(name)
+
+    def stop_all(self) -> None:
+        self._running = False
+        for name in list(self._servers.keys()):
+            self.stop_server(name)
+        remaining = list(self._lifecycle_tasks.keys())
+        if remaining:
+            for task in list(self._lifecycle_tasks.values()):
+                task.cancel()
+        self._loop.call_soon_threadsafe(self._loop.stop)
+        self._loop_thread.join(timeout=5)
 
     def restart_server(self, name: str) -> None:
         inst = self._servers.get(name)
@@ -161,148 +224,41 @@ class MCPMon:
                 time.sleep(backoff)
                 backoff = min(backoff * 2, max_backoff)
 
-    def _send_request(
-        self, name: str, request_id: int, method: str, params: Optional[dict] = None
-    ) -> dict:
-        inst = self._servers.get(name)
-        if not inst or not inst.process or not inst.process.stdin:
-            raise RuntimeError(f"Server {name} not running")
-
-        request = {
-            "jsonrpc": "2.0",
-            "id": request_id,
-            "method": method,
-        }
-        if params is not None:
-            request["params"] = params
-
-        with inst.stdin_lock:
-            inst.process.stdin.write(json.dumps(request) + "\n")
-            inst.process.stdin.flush()
-
-        deadline = time.monotonic() + 10.0
-        while time.monotonic() < deadline:
-            response = self._read_response(name)
-            if response is None:
-                time.sleep(0.01)
-                continue
-            resp_id = response.get("id")
-            if resp_id is None:
-                continue
-            if resp_id == request_id:
-                if "error" in response:
-                    err = response["error"]
-                    raise RuntimeError(
-                        f"MCP error {err.get('code')}: {err.get('message')}"
-                    )
-                return response.get("result", {})
-
-        raise TimeoutError(
-            f"Timeout waiting for response to {method} on {name} (id={request_id})"
-        )
-
-    def _send_notification(
-        self, name: str, method: str, params: Optional[dict] = None
-    ) -> None:
-        inst = self._servers.get(name)
-        if not inst or not inst.process or not inst.process.stdin:
-            return
-
-        notification = {
-            "jsonrpc": "2.0",
-            "method": method,
-        }
-        if params is not None:
-            notification["params"] = params
-
-        with inst.stdin_lock:
-            inst.process.stdin.write(json.dumps(notification) + "\n")
-            inst.process.stdin.flush()
-
-    def _read_response(self, name: str) -> Optional[dict]:
-        inst = self._servers.get(name)
-        if not inst:
-            return None
-
-        with inst.stdout_lock:
-            if inst.stdout_buffer:
-                line = inst.stdout_buffer.pop(0)
-                try:
-                    return json.loads(line)
-                except json.JSONDecodeError:
-                    logger.warning(f"Invalid JSON from {name}: {line}")
-                    return None
-        return None
-
-    def _stdout_reader(self, name: str) -> None:
-        inst = self._servers.get(name)
-        if not inst or not inst.process:
-            return
-
-        try:
-            while inst.process and inst.process.stdout:
-                line = inst.process.stdout.readline()
-                if not line:
-                    break
-                line = line.rstrip("\n\r")
-                if not line:
-                    continue
-                with inst.stdout_lock:
-                    inst.stdout_buffer.append(line)
-        except (ValueError, OSError):
-            pass
-
-    def _discover_tools(self, name: str) -> None:
-        inst = self._servers[name]
-
-        init_result = self._send_request(
-            name,
-            1,
-            "initialize",
-            {
-                "protocolVersion": "0.1.0",
-                "capabilities": {},
-                "clientInfo": {"name": "gitlord", "version": "0.1.0"},
-            },
-        )
-
-        list_result = self._send_request(name, 2, "tools/list")
-        tools_data = list_result.get("tools", [])
-        inst.tools = {}
-        for t in tools_data:
-            tool = ToolInfo(
-                name=t["name"],
-                description=t.get("description", ""),
-                input_schema=t.get("inputSchema", {}),
+    def call_tool(self, server_name: str, tool_name: str, arguments: dict) -> str:
+        inst = self._servers.get(server_name)
+        if not inst or not inst.session:
+            raise RuntimeError(f"Server {server_name} not running")
+        if inst.state != ServerState.RUNNING:
+            raise RuntimeError(
+                f"Server {server_name} is not running (state: {inst.state.value})"
             )
-            inst.tools[t["name"]] = tool
 
-    def _monitor_server(self, name: str) -> None:
-        inst = self._servers[name]
-        while self._running and inst.state in (
-            ServerState.RUNNING,
-            ServerState.DEGRADED,
-        ):
-            if inst.process is None:
-                break
-            retcode = inst.process.poll()
-            if retcode is not None:
-                stderr = ""
-                if inst.process.stderr:
-                    try:
-                        stderr = inst.process.stderr.read()
-                    except Exception:
-                        pass
-                inst.last_error = (
-                    f"Exited with code {retcode}: {stderr[:200]}"
-                )
-                inst.state = ServerState.STOPPED
-                logger.warning(
-                    f"MCP server {name} exited (code {retcode}), restarting..."
-                )
-                self.restart_server(name)
-                break
-            time.sleep(0.5)
+        future = asyncio.run_coroutine_threadsafe(
+            self._call_tool_async(server_name, tool_name, arguments),
+            self._loop,
+        )
+        return future.result(timeout=30)
+
+    async def _call_tool_async(
+        self, server_name: str, tool_name: str, arguments: dict
+    ) -> str:
+        inst = self._servers[server_name]
+        if not inst.session:
+            raise RuntimeError(f"Server {server_name} not running")
+        result = await inst.session.call_tool(tool_name, arguments)
+        if result.isError:
+            content_text = self._extract_content_text(result.content)
+            raise RuntimeError(f"Tool call failed: {content_text}")
+        return self._extract_content_text(result.content)
+
+    def _extract_content_text(self, content: list) -> str:
+        parts = []
+        for c in content:
+            if isinstance(c, TextContent):
+                parts.append(c.text)
+            else:
+                parts.append(str(c))
+        return "\n".join(parts)
 
     def get_all_tools(self, namespace: bool = True) -> dict[str, ToolInfo]:
         tools: dict[str, ToolInfo] = {}

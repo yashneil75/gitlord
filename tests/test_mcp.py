@@ -104,16 +104,47 @@ class TestMCPToolNamespace:
             mon.stop_all()
 
 
+class TestMCPCallTool:
+    def test_call_tool_echo(self, mon: MCPMon, config: MCPServerConfig):
+        mon.start_server(config.name)
+        result = mon.call_tool(config.name, "echo", {"message": "hello"})
+        assert '"hello"' in result
+
+    def test_call_tool_list_files(self, mon: MCPMon, config: MCPServerConfig):
+        mon.start_server(config.name)
+        result = mon.call_tool(config.name, "list_files", {"path": "/tmp"})
+        assert "file1.txt" in result
+
+    def test_call_tool_read_file(self, mon: MCPMon, config: MCPServerConfig):
+        mon.start_server(config.name)
+        result = mon.call_tool(config.name, "read_file", {"path": "/test.txt"})
+        assert "Contents of /test.txt" in result
+
+    def test_call_tool_not_running_raises(self, mon: MCPMon, config: MCPServerConfig):
+        with pytest.raises(RuntimeError, match="not running"):
+            mon.call_tool(config.name, "echo", {"message": "x"})
+
+    def test_call_tool_unknown_tool(self, mon: MCPMon, config: MCPServerConfig):
+        mon.start_server(config.name)
+        with pytest.raises(Exception):
+            mon.call_tool(config.name, "nonexistent", {})
+
+    def test_call_tool_after_stop_raises(self, mon: MCPMon, config: MCPServerConfig):
+        mon.start_server(config.name)
+        mon.stop_server(config.name)
+        with pytest.raises(RuntimeError, match="not running"):
+            mon.call_tool(config.name, "echo", {"message": "x"})
+
+
 class TestMCPCrashAndRestart:
     def test_crash_detection_and_restart(self, mon: MCPMon, config: MCPServerConfig):
         mon.start_server(config.name)
         assert mon.get_server_state(config.name) == ServerState.RUNNING
 
-        inst = mon.get_server_info(config.name)
-        assert inst is not None and inst.process is not None
-        inst.process.kill()
+        with pytest.raises(Exception):
+            mon.call_tool(config.name, "crash", {})
 
-        deadline = time.monotonic() + 10.0
+        deadline = time.monotonic() + 15.0
         while time.monotonic() < deadline:
             if mon.get_server_state(config.name) == ServerState.RUNNING:
                 break

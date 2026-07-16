@@ -17,7 +17,10 @@ all = [
     "chromadb>=0.5",
     "typer>=0.9",
     "ulid-py>=1.1",
+    "tiktoken>=0.7",
+    "mcp>=1.27",
 ]
+mcp = ["mcp>=1.27"]
 litellm = ["litellm>=1.40"]
 chromadb = ["chromadb>=0.5"]
 cli = ["typer>=0.9"]

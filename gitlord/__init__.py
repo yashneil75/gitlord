@@ -4,7 +4,10 @@ from gitlord.git import GitRepo
 from gitlord.session import Session
 from gitlord.subagent import SubagentManager
 from gitlord.context import ContextAssembler
-from gitlord.mcp import MCPMon
+try:
+    from gitlord.mcp import MCPMon
+except ImportError:
+    MCPMon = None  # type: ignore
 from gitlord.model import ModelRouter
 from gitlord.rag import VectorIndex
 from gitlord.index import IndexBuilder
@@ -22,8 +25,9 @@ __all__ = [
     "Session",
     "SubagentManager",
     "ContextAssembler",
-    "MCPMon",
     "ModelRouter",
     "VectorIndex",
     "IndexBuilder",
 ]
+if MCPMon is not None:
+    __all__.append("MCPMon")
