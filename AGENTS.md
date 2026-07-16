@@ -3,9 +3,9 @@
 ## Framework: GitLord — Agent Orchestration with Git-Backed Storage
 
 ### What was done
-- Scaffolded the full gitlord package from SPEC.md (12 modules + pyproject.toml)
-- All modules import cleanly
-- Task 6: Index rebuild + CLI tests, added `GitRepo.rev_parse()` for SHA resolution
+- Full implementation of all 7 tasks from PLAN.md via subagent-driven development
+- 165 tests (154 pass, 11 skipped for optional chromadb) — all modules fully implemented
+- Review found 2 Critical issues, both fixed
 
 ### File Map
 
@@ -30,6 +30,9 @@
 - **Optional imports** for litellm, chromadb, typer, ulid — core runs without them, features degrade gracefully
 - **Thread-safe queue** in SubagentManager with per-parent queues, max depth 1 per active subagent per spec
 - **Session._branch** is mutable for rewind (creates new branch on same Session class)
+- **Subagent branch format**: `refs/agents/sub/<session-id>/<subagent-id>` — the `sub/` prefix avoids git's file/directory conflict (git won't allow `refs/agents/<session>` as both a loose ref and a prefix for `refs/agents/<session>/<sub>`)
+- **CAS retry recalculates turn number** inside rebuild closure to avoid duplicate turn numbers on concurrent writes
+- **MCP protocol** uses real JSON-RPC 2.0 over stdin/stdout with initialize+tools/list handshake
 
 ### Dependencies
 - **Required:** pydantic>=2.0
@@ -38,8 +41,11 @@
 
 ### Gotchas
 - `Session._branch` is mutated by rewind — callers must use the returned Session, not the original
-- SubagentManager trim skips branches with depth <= 3 (root) and active subagents
+- SubagentManager `_get_depth` normalizes out the `sub/` prefix: root session = depth 0, first-level subagent = depth 1
 - Context assembler uses heuristic token counting (len//4) — not accurate; needs real tokenizer
-- MCPMon tool discovery is stubbed — needs actual MCP protocol handshake for real servers
 - `Session.rewind` does `rev_parse(target_sha)` to accept abbreviated SHAs — this was added to fix CLI rewind with log output
 - CLI tests use `cwd_isolation` fixture (chdir to tmp_path) — tests must be serial; parallel execution would break due to shared CWD
+- Turn number recalculation in CAS rebuild closure requires `_next_turn_number()` to be callable from inside `rebuild()` — it reads the current branch tip which is the `old_parent` at CAS retry time
+- `get_turn_filename` returns the *last* matching turn file (sorted) — important because system turns and content turns coexist in the tree
+- MCP tests use a mock server script (`tests/mock_mcp_server.py`) — real servers need the actual `uvx` or `npx` commands
+- ChromaDB tests are skipped when `chromadb` not installed — 11 skipped tests in `test_rag.py`
