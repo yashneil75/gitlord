@@ -36,6 +36,8 @@
 - **Session._branch** is mutable for rewind (creates new branch on same Session class)
 - **Subagent branch format**: `refs/agents/sub/<session-id>/<subagent-id>` — the `sub/` prefix avoids git's file/directory conflict (git won't allow `refs/agents/<session>` as both a loose ref and a prefix for `refs/agents/<session>/<sub>`)
 - **CAS retry recalculates turn number** inside rebuild closure to avoid duplicate turn numbers on concurrent writes
+- **Error hierarchy**: `GitlordError(Exception)` in `schemas.py` — base for all framework errors (`GitError`, `CASError`, `LiteLLMError`, `ChromaDBError`). `ValueError` for caller input bugs.
+- **Full type annotations**: all public methods across every module have return type annotations.
 - **MCP protocol** uses official `mcp` SDK v1.27.1 (`mcp.client.stdio.stdio_client` + `ClientSession`) instead of hand-rolled JSON-RPC
 - **MCPMon threading**: single background asyncio event loop thread with per-server lifecycle coroutines (`_server_lifecycle`) — replaces original threaded stdout reader + lock approach
 - **call_tool** is now a public method on MCPMon (`call_tool(server, tool, args) -> str`) using `session.call_tool()` under the hood
