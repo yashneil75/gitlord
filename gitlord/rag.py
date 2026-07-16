@@ -132,6 +132,42 @@ class VectorIndex:
             filter_by={"type": doc_type},
         )
 
+    def query_mmr(
+        self,
+        query_text: str,
+        n_results: int = 5,
+        diversity: float = 0.5,
+        filter_by: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        where = filter_by or {}
+        try:
+            results = self._collection.query(
+                query_texts=[query_text],
+                n_results=n_results,
+                where=where if where else None,
+                lambda_mult=diversity,
+            )
+        except Exception as e:
+            raise ChromaDBError(f"MMR query failed: {e}") from e
+        return self._format_results(results)
+
+    def hybrid_search(
+        self,
+        query_text: str,
+        n_results: int = 5,
+        filter_by: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        where = filter_by or {}
+        try:
+            results = self._collection.query(
+                query_texts=[query_text],
+                n_results=n_results,
+                where=where if where else None,
+            )
+        except Exception as e:
+            raise ChromaDBError(f"Hybrid search failed: {e}") from e
+        return self._format_results(results)
+
     def delete_turn(self, sha: str) -> None:
         ids = self._collection.get(
             where={"sha": sha},

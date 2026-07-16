@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import time
 from typing import Any, Optional
 
 try:
@@ -88,10 +90,62 @@ class ModelRouter:
         default_model: str = "gpt-4o",
         tool_translator: Optional[ToolSchemaTranslator] = None,
         provider_params: dict[str, Any] | None = None,
+        router_config: dict[str, Any] | None = None,
     ):
         self.default_model = default_model
         self.translator = tool_translator or ToolSchemaTranslator()
         self.provider_params = provider_params or {}
+        self.router_config = router_config or {}
+
+    def _chat_once(
+        self,
+        model_name: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        provider = self.translator.infer_provider(model_name)
+        chat_kwargs: dict[str, Any] = {
+            "model": model_name,
+            "messages": messages,
+            **kwargs,
+        }
+        if tools:
+            translated = self.translator.translate(tools, provider)
+            chat_kwargs["tools"] = translated
+        if self.provider_params:
+            chat_kwargs.setdefault("metadata", {}).update(
+                self.provider_params
+            )
+        response = completion(**chat_kwargs)
+        return self._normalize_response(response)
+
+    def _chat_with_retry(
+        self,
+        model_name: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        max_retries = self.router_config.get("max_retries", 3)
+        retry_delay = self.router_config.get("retry_delay", 1.0)
+        fallbacks = self.router_config.get("fallbacks", [])
+
+        models_to_try: list[tuple[str, int]] = [(model_name, max_retries)]
+        for fb_model, fb_retries in fallbacks:
+            models_to_try.append((fb_model, fb_retries))
+
+        last_error: Exception | None = None
+        for attempt_model, retry_count in models_to_try:
+            for attempt in range(retry_count):
+                try:
+                    return self._chat_once(attempt_model, messages, tools, **kwargs)
+                except Exception as e:
+                    last_error = e
+                    if attempt < retry_count - 1:
+                        time.sleep(retry_delay * (2**attempt))
+
+        raise LiteLLMError(str(last_error)) from last_error
 
     def chat(
         self,
@@ -104,28 +158,61 @@ class ModelRouter:
             raise LiteLLMError("litellm is not installed")
 
         model_name = model or self.default_model
-        provider = self.translator.infer_provider(model_name)
+        return self._chat_with_retry(model_name, messages, tools, **kwargs)
 
+    async def _chat_once_async(
+        self,
+        model_name: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        from litellm import acompletion
+
+        provider = self.translator.infer_provider(model_name)
         chat_kwargs: dict[str, Any] = {
             "model": model_name,
             "messages": messages,
             **kwargs,
         }
-
         if tools:
             translated = self.translator.translate(tools, provider)
             chat_kwargs["tools"] = translated
-
         if self.provider_params:
             chat_kwargs.setdefault("metadata", {}).update(
                 self.provider_params
             )
+        response = await acompletion(**chat_kwargs)
+        return self._normalize_response(response)
 
-        try:
-            response = completion(**chat_kwargs)
-            return self._normalize_response(response)
-        except Exception as e:
-            raise LiteLLMError(str(e)) from e
+    async def _chat_with_retry_async(
+        self,
+        model_name: str,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        max_retries = self.router_config.get("max_retries", 3)
+        retry_delay = self.router_config.get("retry_delay", 1.0)
+        fallbacks = self.router_config.get("fallbacks", [])
+
+        models_to_try: list[tuple[str, int]] = [(model_name, max_retries)]
+        for fb_model, fb_retries in fallbacks:
+            models_to_try.append((fb_model, fb_retries))
+
+        last_error: Exception | None = None
+        for attempt_model, retry_count in models_to_try:
+            for attempt in range(retry_count):
+                try:
+                    return await self._chat_once_async(
+                        attempt_model, messages, tools, **kwargs
+                    )
+                except Exception as e:
+                    last_error = e
+                    if attempt < retry_count - 1:
+                        await asyncio.sleep(retry_delay * (2**attempt))
+
+        raise LiteLLMError(str(last_error)) from last_error
 
     async def chat_async(
         self,
@@ -138,29 +225,7 @@ class ModelRouter:
             raise LiteLLMError("litellm is not installed")
 
         model_name = model or self.default_model
-        provider = self.translator.infer_provider(model_name)
-
-        chat_kwargs: dict[str, Any] = {
-            "model": model_name,
-            "messages": messages,
-            **kwargs,
-        }
-
-        if tools:
-            translated = self.translator.translate(tools, provider)
-            chat_kwargs["tools"] = translated
-
-        if self.provider_params:
-            chat_kwargs.setdefault("metadata", {}).update(
-                self.provider_params
-            )
-
-        try:
-            from litellm import acompletion
-            response = await acompletion(**chat_kwargs)
-            return self._normalize_response(response)
-        except Exception as e:
-            raise LiteLLMError(str(e)) from e
+        return await self._chat_with_retry_async(model_name, messages, tools, **kwargs)
 
     def embed(
         self,
