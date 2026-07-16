@@ -8,7 +8,7 @@ from gitlord.schemas import AgentConfig, MCPServerConfig, SessionConfig
 
 
 class Config:
-    def __init__(self, session: SessionConfig | None = None):
+    def __init__(self, session: SessionConfig | None = None) -> None:
         self.session = session or SessionConfig()
 
     @classmethod

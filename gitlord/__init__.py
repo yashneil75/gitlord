@@ -1,4 +1,4 @@
-from gitlord.schemas import Turn, TurnRole, CommitTrailers, MCPServerConfig, AgentConfig, SessionConfig
+from gitlord.schemas import GitlordError, Turn, TurnRole, CommitTrailers, MCPServerConfig, AgentConfig, SessionConfig
 from gitlord.config import Config, load_config
 from gitlord.git import GitRepo
 from gitlord.session import Session
@@ -13,6 +13,7 @@ from gitlord.rag import VectorIndex
 from gitlord.index import IndexBuilder
 
 __all__ = [
+    "GitlordError",
     "Turn",
     "TurnRole",
     "CommitTrailers",

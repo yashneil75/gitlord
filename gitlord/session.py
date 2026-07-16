@@ -14,7 +14,7 @@ class Session:
         workspace_repo: GitRepo,
         config: SessionConfig,
         session_id: str,
-    ):
+    ) -> None:
         self.log_repo = log_repo
         self.workspace_repo = workspace_repo
         self.config = config
@@ -36,7 +36,7 @@ class Session:
 
         branch = f"refs/agents/{session_id}"
         if log_repo.ref_exists(branch):
-            raise ValueError(f"Session {session_id} already exists")
+            raise ValueError(f"Session {session_id} already exists")  # caller bug
 
         log_repo.create_orphan_branch(branch)
 
@@ -63,7 +63,7 @@ class Session:
         workspace_repo = GitRepo(config.workspace_repo_path)
         branch = f"refs/agents/{session_id}"
         if not log_repo.ref_exists(branch):
-            raise ValueError(f"Session {session_id} not found")
+            raise ValueError(f"Session {session_id} not found")  # caller bug
         return cls(log_repo, workspace_repo, config, session_id)
 
     def _commit_turn(self, turn: Turn, subagent_result: str | None = None) -> str:
@@ -190,20 +190,20 @@ class Session:
     def rewind(self, target_sha: str, branch_name: str | None = None) -> Session:
         target_sha = self.log_repo.rev_parse(target_sha)
         if not self.log_repo.commit_exists(target_sha):
-            raise ValueError(f"Commit {target_sha} not found")
+            raise ValueError(f"Commit {target_sha} not found")  # caller bug
 
         trailers = self.log_repo.parse_trailers(target_sha)
         if not trailers:
-            raise ValueError(f"Commit {target_sha} has no valid trailers")
+            raise ValueError(f"Commit {target_sha} has no valid trailers")  # caller bug
 
         commits = self.log_repo.log_branch(self.branch, format="%H", reverse=False)
         if target_sha not in commits:
-            raise ValueError(f"Commit {target_sha} is not on branch {self.branch}")
+            raise ValueError(f"Commit {target_sha} is not on branch {self.branch}")  # caller bug
 
         new_branch_name = branch_name or f"{self.branch}-rewind-{target_sha[:12]}"
 
         if self.log_repo.ref_exists(new_branch_name):
-            raise ValueError(f"Branch {new_branch_name} already exists")
+            raise ValueError(f"Branch {new_branch_name} already exists")  # caller bug
 
         self.log_repo.update_ref(new_branch_name, target_sha)
 

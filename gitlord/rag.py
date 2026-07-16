@@ -12,10 +12,10 @@ except ImportError:
     HAS_CHROMADB = False
 
 
-from gitlord.schemas import ChunkingConfig
+from gitlord.schemas import GitlordError, ChunkingConfig
 
 
-class ChromaDBError(Exception):
+class ChromaDBError(GitlordError):
     pass
 
 
@@ -25,7 +25,7 @@ class VectorIndex:
         collection_name: str = "gitlord",
         persist_directory: str = ".chroma",
         chunking: ChunkingConfig | None = None,
-    ):
+    ) -> None:
         if not HAS_CHROMADB:
             raise ChromaDBError("chromadb is not installed")
 

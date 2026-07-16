@@ -44,7 +44,7 @@ if HAS_TYPER:
         session: str = Option(None, "--session", help="Session ID"),
         model: str = Option(None, "--model", help="Model name override"),
         config: str = Option(None, "--config", help="Path to config file"),
-    ):
+    ) -> None:
         """Start or continue a session"""
         cfg = load_config(config)
         if model:
@@ -64,7 +64,7 @@ if HAS_TYPER:
     def log(
         session_id: str = Argument(..., help="Session ID"),
         branch: str = Option(None, "--branch", help="Branch path (default: root)"),
-    ):
+    ) -> None:
         """Show human-readable turn history"""
         sess = _get_session(session_id)
         branch_path = f"refs/agents/{session_id}"
@@ -82,7 +82,7 @@ if HAS_TYPER:
     @app.command()
     def tree(
         session_id: str = Argument(..., help="Session ID"),
-    ):
+    ) -> None:
         """Render agent/subagent branch structure"""
         sess = _get_session(session_id)
         refs = list(sess.log_repo.list_refs(f"refs/agents/{session_id}"))
@@ -103,7 +103,7 @@ if HAS_TYPER:
         sha: str = Argument(..., help="Commit SHA"),
         session: str = Option(None, "--session", help="Session ID (for repo location)"),
         config: str = Option(None, "--config", help="Path to config file"),
-    ):
+    ) -> None:
         """Print full turn JSON at commit"""
         cfg = load_config(config)
         repo = GitRepo(cfg.session.log_repo_path)
@@ -120,7 +120,7 @@ if HAS_TYPER:
         to: str = Option(..., "--to", help="Target commit SHA"),
         run: str = Option(None, "--run", help="Prompt to re-run from"),
         branch_name: str = Option(None, "--branch-name", help="New branch name"),
-    ):
+    ) -> None:
         """Checkout branch at sha, optionally re-run from there"""
         sess = _get_session(session_id)
         new_session = sess.rewind(to, branch_name)
@@ -136,7 +136,7 @@ if HAS_TYPER:
         sha2: str = Argument(..., help="Second commit SHA"),
         session: str = Option(None, "--session", help="Session ID"),
         config: str = Option(None, "--config", help="Path to config file"),
-    ):
+    ) -> None:
         """Diff turn content between two commits"""
         cfg = load_config(config)
         repo = GitRepo(cfg.session.log_repo_path)
@@ -174,7 +174,7 @@ if HAS_TYPER:
     def index(
         rebuild: bool = Option(False, "--rebuild", help="Rebuild JSON and vector indexes"),
         config: str = Option(None, "--config", help="Path to config file"),
-    ):
+    ) -> None:
         """Rebuild indexes from git log"""
         cfg = load_config(config)
         repo = GitRepo(cfg.session.log_repo_path)
@@ -199,7 +199,7 @@ if HAS_TYPER:
         command: str = Argument(..., help="Server command"),
         args: list[str] = Argument(None, help="Command arguments"),
         config: str = Option(None, "--config", help="Path to config file"),
-    ):
+    ) -> None:
         """Append MCPServerConfig to config"""
         cfg = load_config(config)
         server = MCPServerConfig(name=name, command=command, args=args or [])
@@ -215,7 +215,7 @@ if HAS_TYPER:
         session_id: str = Option(None, "--session", help="Session ID to trim"),
         all: bool = Option(False, "--all", help="Trim all completed subagent branches"),
         config: str = Option(None, "--config", help="Path to config file"),
-    ):
+    ) -> None:
         """Delete completed subagent branches"""
         cfg = load_config(config)
         repo = GitRepo(cfg.session.log_repo_path)
@@ -229,7 +229,7 @@ if HAS_TYPER:
         print(f"Trimmed {count} branches")
 
 
-def main():
+def main() -> None:
     if not HAS_TYPER:
         print("Error: typer is required for CLI. Install with: pip install typer", file=sys.stderr)
         sys.exit(1)

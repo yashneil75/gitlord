@@ -4,7 +4,7 @@ import pytest
 
 from gitlord.subagent import SubagentManager
 from gitlord.session import Session
-from gitlord.schemas import SessionConfig, TurnRole
+from gitlord.schemas import GitlordError, SessionConfig, TurnRole
 from gitlord.git import GitRepo
 
 
@@ -65,13 +65,13 @@ class TestSubagentSpawn:
         self, manager: SubagentManager, session: Session
     ):
         manager.config.agent.max_depth = 0
-        with pytest.raises(ValueError, match="Max agent depth"):
+        with pytest.raises(GitlordError, match="Max agent depth"):
             manager.spawn(session.branch, session.session_id)
 
     def test_spawn_rejects_missing_parent(
         self, manager: SubagentManager
     ):
-        with pytest.raises(ValueError, match="has no commits"):
+        with pytest.raises(GitlordError, match="has no commits"):
             manager.spawn("refs/agents/nonexistent", "agent-id")
 
     def test_spawn_rejects_when_queue_full(
@@ -85,7 +85,7 @@ class TestSubagentSpawn:
         for i, sid in enumerate(ids):
             manager.complete(sid, f"{i:040x}")
 
-        with pytest.raises(RuntimeError, match="queue at capacity"):
+        with pytest.raises(GitlordError, match="queue at capacity"):
             manager.spawn(session.branch, session.session_id)
 
     def test_spawn_after_drain_when_queue_was_full(
@@ -117,7 +117,7 @@ class TestSubagentComplete:
     def test_complete_unknown_subagent_raises(
         self, manager: SubagentManager
     ):
-        with pytest.raises(ValueError, match="not found"):
+        with pytest.raises(GitlordError, match="not found"):
             manager.complete("no-such-agent", "a" * 40)
 
     def test_complete_invokes_callback(

@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from gitlord.schemas import CommitTrailers, Turn
+from gitlord.schemas import CommitTrailers, Turn, GitlordError
 
 
 TRAILER_RE = re.compile(r"^([A-Za-z][A-Za-z0-9-]*):\s+(.+)$")
@@ -17,7 +17,7 @@ SUMMARY_RE = re.compile(
 TURN_FILENAME_RE = re.compile(r"^(\d{20})-(\w+)\.json$")
 
 
-class GitError(Exception):
+class GitError(GitlordError):
     pass
 
 
@@ -43,7 +43,7 @@ def _git(*args: str, repo: str | Path, log_stderr: bool = False) -> str:
 
 
 class GitRepo:
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path) -> None:
         self.path = Path(path).resolve()
         self._ensure_repo()
 

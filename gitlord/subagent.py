@@ -19,7 +19,7 @@ except ImportError:
         return uuid.uuid4().hex[:26]
 
 
-from gitlord.schemas import SessionConfig, Turn, TurnRole
+from gitlord.schemas import GitlordError, SessionConfig, Turn, TurnRole
 from gitlord.git import GitRepo
 from gitlord.session import Session
 
@@ -32,7 +32,7 @@ class SubagentManager:
         config: SessionConfig,
         session_id: str,
         on_complete: Optional[Callable[[str, str], None]] = None,
-    ):
+    ) -> None:
         self.log_repo = log_repo
         self.workspace_repo = workspace_repo
         self.config = config
@@ -55,7 +55,7 @@ class SubagentManager:
         parent_agent_id: str,
     ) -> tuple[str, str]:
         if self._get_depth(parent_branch) >= self.config.agent.max_depth:
-            raise ValueError(
+            raise GitlordError(
                 f"Max agent depth {self.config.agent.max_depth} reached"
             )
 
@@ -64,7 +64,7 @@ class SubagentManager:
 
         parent_sha = self.log_repo.read_ref(parent_branch)
         if not parent_sha:
-            raise ValueError(f"Parent branch {parent_branch} has no commits")
+            raise GitlordError(f"Parent branch {parent_branch} has no commits")
 
         with self._lock:
             active_for_parent = [
@@ -76,7 +76,7 @@ class SubagentManager:
             pending = len(queue) if queue else 0
             capacity = max(1, len(active_for_parent))
             if pending >= capacity:
-                raise RuntimeError(
+                raise GitlordError(
                     f"Parent queue at capacity ({pending} pending >= {capacity} capacity)"
                 )
 
@@ -119,7 +119,7 @@ class SubagentManager:
         with self._lock:
             info = self._active_subagents.get(subagent_id)
             if not info:
-                raise ValueError(
+                raise GitlordError(
                     f"Subagent {subagent_id} not found or already completed"
                 )
 

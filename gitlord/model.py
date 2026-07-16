@@ -12,7 +12,10 @@ except ImportError:
     HAS_LITELLM = False
 
 
-class LiteLLMError(Exception):
+from gitlord.schemas import GitlordError
+
+
+class LiteLLMError(GitlordError):
     pass
 
 
@@ -91,7 +94,7 @@ class ModelRouter:
         tool_translator: Optional[ToolSchemaTranslator] = None,
         provider_params: dict[str, Any] | None = None,
         router_config: dict[str, Any] | None = None,
-    ):
+    ) -> None:
         self.default_model = default_model
         self.translator = tool_translator or ToolSchemaTranslator()
         self.provider_params = provider_params or {}

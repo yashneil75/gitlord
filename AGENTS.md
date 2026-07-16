@@ -4,8 +4,12 @@
 
 ### What was done
 - Full implementation of all 7 tasks from PLAN.md via subagent-driven development
-- 165 tests (154 pass, 11 skipped for optional chromadb) — all modules fully implemented
+- 179 tests (all pass, 0 skipped) — all modules fully implemented
 - Review found 2 Critical issues, both fixed
+- MCP uses official `mcp` SDK (`mcp.client.stdio` + `ClientSession`) instead of hand-rolled JSON-RPC
+- Real tokenizer via `tiktoken` (optional, falls back to `len//4`)
+- ChromaDB tests all pass (fixed `query_mmr` API drift in chromadb 1.5.9)
+- Real MCP server integration test using `FastMCP` server
 
 ### File Map
 

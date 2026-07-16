@@ -14,7 +14,7 @@ class IndexBuilder:
         self,
         log_repo: GitRepo,
         vector_index: Optional[VectorIndex] = None,
-    ):
+    ) -> None:
         self.log_repo = log_repo
         self.vector_index = vector_index
 

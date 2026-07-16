@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from gitlord.mcp import MCPMon, ServerState, ToolInfo
-from gitlord.schemas import MCPServerConfig
+from gitlord.schemas import GitlordError, MCPServerConfig
 
 
 @pytest.fixture
@@ -91,7 +91,7 @@ class TestRealMCPIntegration:
         assert "fastmcp-test.echo" in tools
 
     def test_call_tool_before_start_raises(self, real_mon: MCPMon):
-        with pytest.raises(RuntimeError):
+        with pytest.raises(GitlordError):
             real_mon.call_tool("fastmcp-test", "calculator", {"operation": "add", "a": 1, "b": 2})
 
     def test_call_nonexistent_tool_raises(self, real_mon: MCPMon):

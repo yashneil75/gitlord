@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from gitlord.mcp import MCPMon, ServerState, ToolInfo
-from gitlord.schemas import MCPServerConfig
+from gitlord.schemas import GitlordError, MCPServerConfig
 
 
 @pytest.fixture
@@ -121,7 +121,7 @@ class TestMCPCallTool:
         assert "Contents of /test.txt" in result
 
     def test_call_tool_not_running_raises(self, mon: MCPMon, config: MCPServerConfig):
-        with pytest.raises(RuntimeError, match="not running"):
+        with pytest.raises(GitlordError, match="not running"):
             mon.call_tool(config.name, "echo", {"message": "x"})
 
     def test_call_tool_unknown_tool(self, mon: MCPMon, config: MCPServerConfig):
@@ -132,7 +132,7 @@ class TestMCPCallTool:
     def test_call_tool_after_stop_raises(self, mon: MCPMon, config: MCPServerConfig):
         mon.start_server(config.name)
         mon.stop_server(config.name)
-        with pytest.raises(RuntimeError, match="not running"):
+        with pytest.raises(GitlordError, match="not running"):
             mon.call_tool(config.name, "echo", {"message": "x"})
 
 

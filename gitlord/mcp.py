@@ -21,7 +21,7 @@ except ImportError:
     ClientSession = None  # type: ignore
     TextContent = None  # type: ignore
 
-from gitlord.schemas import MCPServerConfig
+from gitlord.schemas import GitlordError, MCPServerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +56,9 @@ class MCPMon:
         self,
         servers: list[MCPServerConfig],
         on_tool_change: Optional[Callable[[], None]] = None,
-    ):
+    ) -> None:
         if not _MCP_AVAILABLE:
-            raise ImportError(
+            raise GitlordError(
                 "MCPMon requires the 'mcp' package. Install it with: pip install gitlord[mcp]"
             )
         self._servers: dict[str, ServerInstance] = {
@@ -78,7 +78,7 @@ class MCPMon:
     def start_server(self, name: str) -> None:
         inst = self._servers.get(name)
         if not inst:
-            raise ValueError(f"Unknown server: {name}")
+            raise ValueError(f"Unknown server: {name}")  # caller bug
         if inst.state == ServerState.RUNNING:
             return
 
@@ -146,7 +146,7 @@ class MCPMon:
         except asyncio.CancelledError:
             inst.state = ServerState.STOPPED
             if not ready.done():
-                ready.set_exception(RuntimeError("Server startup cancelled"))
+                ready.set_exception(GitlordError("Server startup cancelled"))
         except Exception as e:
             inst.state = ServerState.STOPPED
             inst.last_error = str(e)
@@ -227,9 +227,9 @@ class MCPMon:
     def call_tool(self, server_name: str, tool_name: str, arguments: dict) -> str:
         inst = self._servers.get(server_name)
         if not inst or not inst.session:
-            raise RuntimeError(f"Server {server_name} not running")
+            raise GitlordError(f"Server {server_name} not running")
         if inst.state != ServerState.RUNNING:
-            raise RuntimeError(
+            raise GitlordError(
                 f"Server {server_name} is not running (state: {inst.state.value})"
             )
 
@@ -244,11 +244,11 @@ class MCPMon:
     ) -> str:
         inst = self._servers[server_name]
         if not inst.session:
-            raise RuntimeError(f"Server {server_name} not running")
+            raise GitlordError(f"Server {server_name} not running")
         result = await inst.session.call_tool(tool_name, arguments)
         if result.isError:
             content_text = self._extract_content_text(result.content)
-            raise RuntimeError(f"Tool call failed: {content_text}")
+            raise GitlordError(f"Tool call failed: {content_text}")
         return self._extract_content_text(result.content)
 
     def _extract_content_text(self, content: list) -> str:
@@ -289,7 +289,7 @@ class MCPMon:
 
     def add_server(self, config: MCPServerConfig) -> None:
         if config.name in self._servers:
-            raise ValueError(f"Server {config.name} already registered")
+            raise ValueError(f"Server {config.name} already registered")  # caller bug
         self._servers[config.name] = ServerInstance(config=config)
         if self._running:
             self.start_server(config.name)

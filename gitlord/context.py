@@ -100,7 +100,7 @@ class ContextCacheEntry:
 
 
 class ContextCache:
-    def __init__(self):
+    def __init__(self) -> None:
         self._cache: dict[tuple[str, int], ContextCacheEntry] = {}
 
     def get(self, branch: str, turn_n: int) -> Optional[ContextCacheEntry]:
@@ -122,7 +122,7 @@ class ContextAssembler:
         config: SessionConfig,
         dedup_index: DedupIndex | None = None,
         cache: ContextCache | None = None,
-    ):
+    ) -> None:
         self.log_repo = log_repo
         self.config = config
         self.dedup_index = dedup_index or DedupIndex()

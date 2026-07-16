@@ -7,6 +7,11 @@ from typing import Any, Optional
 from pydantic import BaseModel, Field
 
 
+class GitlordError(Exception):
+    """Base exception for all Gitlord errors."""
+    pass
+
+
 class TurnRole(str, Enum):
     system = "system"
     user = "user"
