@@ -26,8 +26,8 @@ for t in turns:
 pip install gitlord           # core only (pydantic)
 pip install gitlord[all]      # everything
 pip install gitlord[mcp]      # MCP server support
-pip install gitlord[llm]      # LLM model routing (litellm)
-pip install gitlord[rag]      # ChromaDB vector index
+pip install gitlord[litellm]  # LLM model routing (litellm)
+pip install gitlord[chromadb] # ChromaDB vector index
 ```
 
 ## Architecture
@@ -68,7 +68,7 @@ gitlord diff <sha-a> <sha-b>              # diff two turns
 ## Development
 
 ```bash
-pip install -e ".[all,dev]"
+pip install -e ".[all]"
 pytest tests/
 ```
 

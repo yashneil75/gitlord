@@ -6,4 +6,6 @@ index.json
 .superpowers/
 log/
 test_log/
+test_e2e_log/
 gitlord.json
+e2e_test.py
