@@ -1,6 +1,6 @@
 # GitLord
 
-Agent orchestration framework with Git-backed storage. Every turn is a Git commit — inspectable, rewindable, forkable.
+Agent orchestration framework with Git-backed storage. Every turn is a Git commit: inspectable, rewindable, forkable.
 
 ## Quickstart
 
