@@ -200,12 +200,16 @@ class VectorIndex:
         if len(text) <= size:
             return [text]
 
+        # an overlap >= size would make the window step non-positive and
+        # loop forever; clamp the step to at least 1 character
+        step = max(1, size - overlap)
+
         chunks: list[str] = []
         start = 0
         while start < len(text):
             end = start + size
             chunks.append(text[start:end])
-            start += size - overlap
+            start += step
 
         return chunks
 

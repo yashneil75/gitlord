@@ -55,7 +55,10 @@ if HAS_TYPER:
             from gitlord.subagent import _new_ulid
             session_id = _new_ulid()
 
-        sess = _get_session(session_id, config, create=True)
+        # "start or continue": resume the session if it already exists
+        log_repo = GitRepo(cfg.session.log_repo_path)
+        exists = log_repo.ref_exists(f"refs/agents/{session_id}")
+        sess = _get_session(session_id, config, create=not exists)
         sha = sess.append_user_turn(prompt)
         print(f"Session: {session_id}")
         print(f"Turn committed: {sha}")

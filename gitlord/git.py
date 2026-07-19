@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import random
 import re
 import subprocess
 import tempfile
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -292,23 +294,35 @@ class GitRepo:
         return self.commit_tree(tree_sha, message, parent=parent_sha)
 
     def update_ref_cas(
-        self, ref: str, new_sha: str, old_sha: str | None, rebuild_fn=None
+        self,
+        ref: str,
+        new_sha: str,
+        old_sha: str | None,
+        rebuild_fn=None,
+        max_retries: int = 64,
     ) -> str:
-        max_retries = 3
         for attempt in range(max_retries):
             try:
-                if old_sha:
-                    _git("update-ref", ref, new_sha, old_sha, repo=self.path)
-                else:
-                    _git("update-ref", ref, new_sha, repo=self.path)
+                # old_sha None means "ref must not exist yet" — pass the null
+                # sha so a concurrently created ref is never clobbered.
+                expected = old_sha if old_sha else "0" * 40
+                _git("update-ref", ref, new_sha, expected, repo=self.path)
                 return new_sha
             except GitError as e:
                 err = str(e)
-                if (
-                    "cannot lock ref" in err or "unexpected object" in err
-                ) and attempt < max_retries - 1:
+                retryable = (
+                    "cannot lock ref" in err
+                    or "unexpected object" in err
+                    or "but expected" in err
+                    or "File exists" in err
+                )
+                if retryable and attempt < max_retries - 1:
                     if rebuild_fn is None:
                         raise CASError(f"CAS update failed for {ref}: {err}") from e
+                    # jittered exponential backoff so contending writers
+                    # don't retry in lockstep and starve each other
+                    delay = min(0.002 * (2 ** min(attempt, 6)), 0.2)
+                    time.sleep(delay * (0.5 + random.random()))
                     old_sha = self.read_ref(ref)
                     new_sha = rebuild_fn(old_sha)
                     continue

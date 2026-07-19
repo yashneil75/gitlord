@@ -154,7 +154,7 @@ class SubagentManager:
         session._branch = parent_branch
         keep_branches = self.config.agent.keep_subagent_branches
 
-        for item in items:
+        for idx, item in enumerate(items):
             turn = Turn(
                 turn=session._next_turn_number(),
                 role=TurnRole.tool_result,
@@ -168,7 +168,16 @@ class SubagentManager:
                 }),
                 tags=["subagent_complete"],
             )
-            session._commit_turn(turn, subagent_result=item["final_sha"])
+            try:
+                session._commit_turn(turn, subagent_result=item["final_sha"])
+            except Exception:
+                # put uncommitted results back at the front of the queue so
+                # a failed drain never loses subagent results
+                with self._lock:
+                    queue = self._queues.setdefault(parent_branch, deque())
+                    for remaining in reversed(items[idx:]):
+                        queue.appendleft(remaining)
+                raise
 
             if not keep_branches:
                 self.log_repo.delete_ref(item["branch"])
