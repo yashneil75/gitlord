@@ -28,7 +28,22 @@ class IndexBuilder:
         for ref in refs:
             session_info = self._build_session_index(ref)
             if session_info:
-                session_id = ref.replace("refs/agents/", "", 1).split("/")[0]
+                branch_path = ref.replace("refs/agents/", "", 1)
+                if branch_path.startswith("sub/"):
+                    # subagent branch: refs/agents/sub/<session-id>/<ulid>...
+                    parts = branch_path.split("/")
+                    if len(parts) < 3:
+                        continue
+                    session_id = parts[1]
+                    sub_path = "/".join(parts[2:])
+                else:
+                    session_id = branch_path.split("/")[0]
+                    sub_path = (
+                        branch_path[len(session_id) + 1:]
+                        if branch_path != session_id
+                        else ""
+                    )
+
                 if session_id not in index["sessions"]:
                     index["sessions"][session_id] = {
                         "branch": f"refs/agents/{session_id}",
@@ -37,11 +52,8 @@ class IndexBuilder:
                     }
                 existing = index["sessions"][session_id]
 
-                branch_path = ref.replace("refs/agents/", "", 1)
-                if branch_path != session_id:
-                    sub_path = branch_path[len(session_id) + 1:]
-                    if sub_path and sub_path not in existing["subagents"]:
-                        existing["subagents"].append(sub_path)
+                if sub_path and sub_path not in existing["subagents"]:
+                    existing["subagents"].append(sub_path)
 
                 existing["turns"].extend(session_info.get("turns", []))
 

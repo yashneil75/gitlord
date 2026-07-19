@@ -163,10 +163,15 @@ class ContextAssembler:
                 collected.append((turn, sha))
 
         messages: list[dict[str, Any]] = []
+        last_tool_call_turn: int | None = None
         for turn, sha in collected:
             if sha in summary_exclusions:
                 continue
-            message = self._turn_to_message(turn, sha)
+            if turn.role == TurnRole.tool_call:
+                last_tool_call_turn = turn.turn
+            message = self._turn_to_message(turn, sha, last_tool_call_turn)
+            if turn.role == TurnRole.tool_result:
+                last_tool_call_turn = None
             if message:
                 messages.append(message)
 
@@ -204,6 +209,7 @@ class ContextAssembler:
         self,
         turn: Turn,
         sha: str,
+        last_tool_call_turn: int | None = None,
     ) -> dict[str, Any] | None:
         if turn.role == TurnRole.system:
             return {"role": "system", "content": turn.content}
@@ -227,9 +233,16 @@ class ContextAssembler:
                 ],
             }
         elif turn.role == TurnRole.tool_result:
+            # pair with the most recent unanswered tool_call; turns are not
+            # guaranteed to be adjacent (assistant text can interleave)
+            paired_turn = (
+                last_tool_call_turn
+                if last_tool_call_turn is not None
+                else turn.turn - 1
+            )
             return {
                 "role": "tool",
-                "tool_call_id": f"call_t{turn.turn - 1}",
+                "tool_call_id": f"call_t{paired_turn}",
                 "content": turn.tool_output if turn.tool_output else turn.content,
             }
         return None
