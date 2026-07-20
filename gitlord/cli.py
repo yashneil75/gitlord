@@ -228,6 +228,16 @@ if HAS_TYPER:
         count = mgr.trim(session_id=session_id, all_sessions=all)
         print(f"Trimmed {count} branches")
 
+    @app.command()
+    def snapshot(
+        session_id: str = Argument(..., help="Session ID"),
+        keep_recent: int = Option(5, "--keep", help="Number of recent turns to keep"),
+    ) -> None:
+        """Compress old turns into a snapshot"""
+        sess = _get_session(session_id)
+        sess.snapshot(keep_recent=keep_recent)
+        print(f"Snapshot created, kept {keep_recent} recent turns")
+
 
 def main() -> None:
     if not HAS_TYPER:
