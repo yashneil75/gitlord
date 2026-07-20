@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 from gitlord.schemas import SessionConfig, Turn, TurnRole
@@ -113,6 +115,70 @@ class Session:
         if trailers:
             return trailers.turn + 1
         return 0
+
+    def snapshot(self, keep_recent: int = 5) -> None:
+        commits = self.log_repo.log_branch(self.branch, format="%H", reverse=True)
+        if len(commits) <= keep_recent + 1:
+            return
+
+        cutoff = len(commits) - keep_recent
+        old_commits = commits[:cutoff]
+        recent_commits = commits[cutoff:]
+
+        snapshot_turns = []
+        for sha in old_commits:
+            turn = self.log_repo.get_turn_at_commit(sha)
+            if turn:
+                snapshot_turns.append(turn.model_dump(mode="json"))
+
+        snap_dir = Path(self.workspace_repo.path) / ".gitlord"
+        snap_dir.mkdir(exist_ok=True)
+        snap_path = snap_dir / "snapshot.json"
+        with open(snap_path, "w") as f:
+            json.dump({
+                "snapshot_from": old_commits[0],
+                "snapshot_to": old_commits[-1],
+                "turns": snapshot_turns,
+            }, f, indent=2)
+
+        snapshot_turn = Turn(
+            turn=0,
+            role=TurnRole.system,
+            content=f"Snapshot of {len(old_commits)} turns ({old_commits[0][:8]}..{old_commits[-1][:8]})",
+            agent_id=self.session_id,
+        )
+
+        empty_tree = self.log_repo.mktree([])
+        snap_tree = self.log_repo.mktree([
+            f"040000 tree {empty_tree}\tturns"
+        ])
+        snap_sha = self.log_repo.commit_tree(
+            snap_tree,
+            f"[turn:0][role:system] snapshot compressed",
+            parent=None,
+        )
+
+        new_branch = f"{self.branch}-snapshot"
+        self.log_repo.update_ref(new_branch, snap_sha)
+
+        parent = snap_sha
+        for sha in recent_commits:
+            turn = self.log_repo.get_turn_at_commit(sha)
+            if not turn:
+                continue
+            trailers = self.log_repo.parse_trailers(sha)
+            if not trailers:
+                continue
+            new_sha = self.log_repo.commit_turn(
+                parent_sha=parent,
+                turn=turn,
+                agent_id=turn.agent_id,
+                parent_agent_id=turn.parent_agent_id,
+            )
+            parent = new_sha
+
+        self.log_repo.update_ref(self.branch, parent)
+        self.log_repo.delete_ref(new_branch)
 
     def append_turn(self, turn: Turn) -> str:
         turn.turn = self._next_turn_number()
