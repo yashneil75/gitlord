@@ -8,7 +8,6 @@ from pydantic import BaseModel, Field
 
 
 class GitlordError(Exception):
-    """Base exception for all Gitlord errors."""
     pass
 
 
@@ -21,9 +20,15 @@ class TurnRole(str, Enum):
     summary = "summary"
 
 
+class TurnError(str, Enum):
+    tool_call_error = "tool_call_error"
+    timeout = "timeout"
+
+
 class Turn(BaseModel):
     version: int = Field(default=1, ge=1)
     turn: int = Field(ge=0)
+    turn_id: str = ""
     role: TurnRole
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     agent_id: str
@@ -35,6 +40,8 @@ class Turn(BaseModel):
     model: Optional[str] = None
     tokens_in: int = 0
     tokens_out: int = 0
+    cost: float = 0.0
+    error: Optional[str] = None
     workspace_commit: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
     summarizes: Optional[list[str]] = None
@@ -42,15 +49,22 @@ class Turn(BaseModel):
 
 class CommitTrailers(BaseModel):
     turn: int
+    turn_id: str = ""
     role: str
     agent_id: str
     parent_agent_id: Optional[str] = None
     tool: Optional[str] = None
     tokens_in: int = 0
     tokens_out: int = 0
+    cost: float = 0.0
+    error: Optional[str] = None
     workspace_commit: Optional[str] = None
     subagent_result: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
+    tool_calls: Optional[list[dict[str, Any]]] = None
+    turn_tokens: int = 0
+    parent_sha: Optional[str] = None
+    subagent_id: Optional[str] = None
 
 
 class MCPServerConfig(BaseModel):
@@ -80,3 +94,5 @@ class SessionConfig(BaseModel):
     mcp_servers: list[MCPServerConfig] = Field(default_factory=list)
     log_repo_path: str = "log"
     workspace_repo_path: str = "."
+    auto_index: bool = True
+    index_path: str = ".gitlord/index.json"

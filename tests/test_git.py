@@ -72,7 +72,7 @@ class TestGitPlumbing:
         assert "[turn:1]" in msg
         assert "[role:assistant]" in msg
         assert "[tags:important,test]" in msg
-        assert "Turn: 1" in msg
+        assert "Turn-ID: t1" in msg
         assert "Role: assistant" in msg
         assert "Agent: agent-1" in msg
         assert "Parent-Agent: none" in msg
@@ -81,6 +81,11 @@ class TestGitPlumbing:
         assert "Tokens-Out: 50" in msg
         assert "Workspace-Commit: none" in msg
         assert "Subagent-Result: none" in msg
+        assert "Turn-Tokens: 150" in msg
+        assert "Turn-Cost: 0.000000" in msg
+        assert "Turn-Error: none" in msg
+        assert "Subagent-ID: none" in msg
+        assert "Parent-SHA: none" in msg
 
         trailers = bare_repo.parse_trailers(commit_sha)
         assert trailers is not None
@@ -91,6 +96,7 @@ class TestGitPlumbing:
         assert trailers.tool is None
         assert trailers.tokens_in == 100
         assert trailers.tokens_out == 50
+        assert trailers.turn_tokens == 150
         assert trailers.workspace_commit is None
         assert trailers.subagent_result is None
 

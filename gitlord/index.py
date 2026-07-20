@@ -30,7 +30,6 @@ class IndexBuilder:
             if session_info:
                 branch_path = ref.replace("refs/agents/", "", 1)
                 if branch_path.startswith("sub/"):
-                    # subagent branch: refs/agents/sub/<session-id>/<ulid>...
                     parts = branch_path.split("/")
                     if len(parts) < 3:
                         continue
@@ -123,9 +122,24 @@ class IndexBuilder:
                 "turn": trailers.turn,
                 "role": trailers.role,
                 "tags": trailers.tags,
+                "tokens": trailers.turn_tokens,
+                "tokens_in": trailers.tokens_in,
+                "tokens_out": trailers.tokens_out,
+                "cost": trailers.cost,
+                "turn_id": trailers.turn_id,
             }
+            if trailers.error is not None:
+                turn_entry["error"] = trailers.error
             if trailers.tool:
                 turn_entry["tool"] = trailers.tool
+            if trailers.agent_id:
+                turn_entry["agent_id"] = trailers.agent_id
+            if trailers.parent_agent_id:
+                turn_entry["parent_agent_id"] = trailers.parent_agent_id
+            if trailers.parent_sha:
+                turn_entry["parent_sha"] = trailers.parent_sha
+            if trailers.subagent_id:
+                turn_entry["subagent_id"] = trailers.subagent_id
             turns.append(turn_entry)
 
         if not turns:
