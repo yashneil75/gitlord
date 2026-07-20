@@ -38,6 +38,13 @@ class Turn(BaseModel):
     workspace_commit: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
     summarizes: Optional[list[str]] = None
+    turn_id: Optional[str] = None
+    tokens: int = 0
+    cost: float = 0.0
+    error: Optional[str] = None
+    tool_calls: Optional[list[dict[str, Any]]] = None
+    subagent_id: Optional[str] = None
+    parent_sha: Optional[str] = None
 
 
 class CommitTrailers(BaseModel):
@@ -51,6 +58,13 @@ class CommitTrailers(BaseModel):
     workspace_commit: Optional[str] = None
     subagent_result: Optional[str] = None
     tags: list[str] = Field(default_factory=list)
+    turn_id: Optional[str] = None
+    tokens: int = 0
+    cost: float = 0.0
+    error: Optional[str] = None
+    tool_calls: Optional[list[dict[str, Any]]] = None
+    subagent_id: Optional[str] = None
+    parent_sha: Optional[str] = None
 
 
 class MCPServerConfig(BaseModel):
