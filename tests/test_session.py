@@ -9,9 +9,11 @@ from gitlord.git import GitRepo
 
 @pytest.fixture
 def config(tmp_path: Path) -> SessionConfig:
+    ws_path = tmp_path / "ws"
+    ws_path.mkdir()
     return SessionConfig(
         log_repo_path=str(tmp_path / "log"),
-        workspace_repo_path=str(tmp_path / "ws"),
+        workspace_repo_path=str(ws_path),
     )
 
 
@@ -256,3 +258,85 @@ class TestSessionResumeAfterAppends:
         assert turns[2].content == "second message"
         assert turns[1].turn == 1
         assert turns[2].turn == 2
+
+
+class TestWorkspaceSnapshot:
+    def test_turn_commit_snapshots_workspace_head(self, config: SessionConfig):
+        session = Session.create("ws-snap", config)
+
+        ws = session.workspace_repo
+        (ws.path / "file.txt").write_text("before")
+        ws._bare = False
+        from gitlord.git import _git
+        _git("add", "file.txt", repo=ws.path)
+        _git("commit", "-m", "initial ws state", repo=ws.path)
+        ws_head = ws.get_head()
+
+        session.append_user_turn("turn with snapshot")
+
+        turns = session.get_turns()
+        assert turns[1].workspace_commit == ws_head
+
+    def test_turn_commit_workspace_none_when_no_commits(self, config: SessionConfig):
+        session = Session.create("ws-none", config)
+        session.append_user_turn("no workspace yet")
+
+        turns = session.get_turns()
+        assert turns[1].workspace_commit is None
+
+    def test_multiple_turns_track_workspace_evolution(self, config: SessionConfig):
+        session = Session.create("ws-evolve", config)
+        ws = session.workspace_repo
+        from gitlord.git import _git
+
+        (ws.path / "a.txt").write_text("version a")
+        _git("add", "a.txt", repo=ws.path)
+        _git("commit", "-m", "v1", repo=ws.path)
+        sha_a = ws.get_head()
+
+        session.append_user_turn("turn 1")
+
+        (ws.path / "b.txt").write_text("version b")
+        _git("add", "b.txt", repo=ws.path)
+        _git("commit", "-m", "v2", repo=ws.path)
+        sha_b = ws.get_head()
+
+        session.append_user_turn("turn 2")
+
+        turns = session.get_turns()
+        assert turns[1].workspace_commit == sha_a
+        assert turns[2].workspace_commit == sha_b
+
+
+class TestWorkspaceRestoreOnRewind:
+    def test_rewind_restores_workspace(self, config: SessionConfig):
+        session = Session.create("ws-rewind", config)
+        ws = session.workspace_repo
+        from gitlord.git import _git
+
+        (ws.path / "file.txt").write_text("version 1")
+        _git("add", "file.txt", repo=ws.path)
+        _git("commit", "-m", "v1", repo=ws.path)
+        session.append_user_turn("turn 1")
+
+        (ws.path / "file.txt").write_text("version 2")
+        _git("add", "file.txt", repo=ws.path)
+        _git("commit", "-m", "v2", repo=ws.path)
+        session.append_user_turn("turn 2")
+
+        commits = session.log_repo.log_branch(session.branch, format="%H", reverse=True)
+        target_sha = commits[2]
+
+        rewind_session = session.rewind(target_sha)
+
+        assert (ws.path / "file.txt").read_text() == "version 1"
+
+    def test_rewind_no_workspace_commit_is_noop(self, config: SessionConfig):
+        session = Session.create("ws-rewind-noop", config)
+        session.append_user_turn("no workspace")
+
+        commits = session.log_repo.log_branch(session.branch, format="%H", reverse=True)
+        target_sha = commits[1]
+
+        rewind_session = session.rewind(target_sha)
+        assert rewind_session.branch is not None

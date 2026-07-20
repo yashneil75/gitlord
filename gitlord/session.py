@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from gitlord.schemas import SessionConfig, Turn, TurnRole
-from gitlord.git import GitRepo
+from gitlord.git import GitRepo, GitError
 
 
 class Session:
@@ -31,8 +31,8 @@ class Session:
         session_id: str,
         config: SessionConfig,
     ) -> Session:
-        log_repo = GitRepo(config.log_repo_path)
-        workspace_repo = GitRepo(config.workspace_repo_path)
+        log_repo = GitRepo(config.log_repo_path, bare=True)
+        workspace_repo = GitRepo(config.workspace_repo_path, bare=False)
 
         branch = f"refs/agents/{session_id}"
         if log_repo.ref_exists(branch):
@@ -59,8 +59,8 @@ class Session:
         session_id: str,
         config: SessionConfig,
     ) -> Session:
-        log_repo = GitRepo(config.log_repo_path)
-        workspace_repo = GitRepo(config.workspace_repo_path)
+        log_repo = GitRepo(config.log_repo_path, bare=True)
+        workspace_repo = GitRepo(config.workspace_repo_path, bare=False)
         branch = f"refs/agents/{session_id}"
         if not log_repo.ref_exists(branch):
             raise ValueError(f"Session {session_id} not found")  # caller bug
@@ -69,6 +69,7 @@ class Session:
     def _commit_turn(self, turn: Turn, subagent_result: str | None = None) -> str:
         parent_sha = self.log_repo.read_ref(self.branch)
         turn.turn = self._next_turn_number()
+        turn.workspace_commit = self.workspace_repo.get_head()
         new_sha = self.log_repo.commit_turn(
             parent_sha=parent_sha,
             turn=turn,
@@ -204,6 +205,13 @@ class Session:
 
         if self.log_repo.ref_exists(new_branch_name):
             raise ValueError(f"Branch {new_branch_name} already exists")  # caller bug
+
+        target_turn = self.log_repo.get_turn_at_commit(target_sha)
+        if target_turn and target_turn.workspace_commit:
+            try:
+                self.workspace_repo.checkout(target_turn.workspace_commit)
+            except GitError:
+                pass
 
         self.log_repo.update_ref(new_branch_name, target_sha)
 
