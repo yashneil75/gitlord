@@ -1,6 +1,7 @@
 
 __pycache__/
 *.pyc
+*.egg-info/
 .chroma/
 index.json
 .superpowers/
@@ -10,3 +11,4 @@ test_log/
 test_e2e_log/
 gitlord.json
 e2e_test.py
+.gitlord/
