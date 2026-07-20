@@ -258,6 +258,13 @@ class GitRepo:
         tokens_out: int,
         workspace_commit: str | None,
         subagent_result: str | None,
+        turn_id: str | None = None,
+        tokens: int = 0,
+        cost: float = 0.0,
+        error: str | None = None,
+        tool_calls: list[dict] | None = None,
+        subagent_id: str | None = None,
+        parent_sha: str | None = None,
     ) -> str:
         tag_str = ",".join(tags) if tags else ""
         summary = f"turn {turn_number} by {role}"
@@ -279,6 +286,13 @@ class GitRepo:
         lines.append(f"Tokens-Out: {tokens_out}")
         lines.append(f"Workspace-Commit: {workspace_commit or 'none'}")
         lines.append(f"Subagent-Result: {subagent_result or 'none'}")
+        lines.append(f"Turn-ID: {turn_id or 'none'}")
+        lines.append(f"Turn-Tokens: {tokens}")
+        lines.append(f"Turn-Cost: {cost}")
+        lines.append(f"Turn-Error: {error or 'none'}")
+        lines.append(f"Tool-Calls: {json.dumps(tool_calls) if tool_calls else 'none'}")
+        lines.append(f"Subagent-ID: {subagent_id or 'none'}")
+        lines.append(f"Parent-SHA: {parent_sha or 'none'}")
         return "\n".join(lines)
 
     def commit_turn(
@@ -304,6 +318,13 @@ class GitRepo:
             tokens_out=turn.tokens_out,
             workspace_commit=turn.workspace_commit,
             subagent_result=subagent_result,
+            turn_id=turn.turn_id,
+            tokens=turn.tokens,
+            cost=turn.cost,
+            error=turn.error,
+            tool_calls=turn.tool_calls,
+            subagent_id=turn.subagent_id,
+            parent_sha=turn.parent_sha,
         )
         return self.commit_tree(tree_sha, message, parent=parent_sha)
 
@@ -402,6 +423,13 @@ class GitRepo:
             tokens_out=trailers.tokens_out,
             workspace_commit=trailers.workspace_commit,
             subagent_result=trailers.subagent_result,
+            turn_id=trailers.turn_id,
+            tokens=trailers.tokens,
+            cost=trailers.cost,
+            error=trailers.error,
+            tool_calls=trailers.tool_calls,
+            subagent_id=trailers.subagent_id,
+            parent_sha=trailers.parent_sha,
         )
         return self.commit_tree(tree_sha, message, parent=parent_sha)
 
@@ -464,6 +492,33 @@ class GitRepo:
                 else None
             ),
             tags=tags,
+            turn_id=(
+                trailers.get("turn-id")
+                if trailers.get("turn-id") != "none"
+                else None
+            ),
+            tokens=int(trailers.get("turn-tokens", 0)),
+            cost=float(trailers.get("turn-cost", 0.0)),
+            error=(
+                trailers.get("turn-error")
+                if trailers.get("turn-error") != "none"
+                else None
+            ),
+            tool_calls=(
+                json.loads(trailers["tool-calls"])
+                if trailers.get("tool-calls") and trailers.get("tool-calls") != "none"
+                else None
+            ),
+            subagent_id=(
+                trailers.get("subagent-id")
+                if trailers.get("subagent-id") != "none"
+                else None
+            ),
+            parent_sha=(
+                trailers.get("parent-sha")
+                if trailers.get("parent-sha") != "none"
+                else None
+            ),
         )
 
     def get_turn_number_from_branch(self, ref: str) -> int:
