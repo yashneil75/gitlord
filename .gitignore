@@ -4,6 +4,7 @@ __pycache__/
 .chroma/
 index.json
 .superpowers/
+.gitlord/
 log/
 test_log/
 test_e2e_log/

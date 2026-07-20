@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 from gitlord.git import GitRepo, TURN_FILENAME_RE
@@ -128,3 +129,54 @@ class IndexBuilder:
         with open(path, "w") as f:
             json.dump(index, f, indent=2)
         return index
+
+    def append_turn(self, session_id: str, sha: str, trailers: Any) -> None:
+        index_path = self._index_dir() / "index.json"
+        index = self._load_index(index_path)
+
+        if session_id not in index["sessions"]:
+            index["sessions"][session_id] = {
+                "branch": f"refs/agents/{session_id}",
+                "turns": [],
+                "subagents": [],
+            }
+
+        entry: dict[str, Any] = {
+            "sha": sha,
+            "turn": trailers.turn,
+            "role": trailers.role,
+            "tags": trailers.tags,
+        }
+        if trailers.tool:
+            entry["tool"] = trailers.tool
+        if trailers.turn_id:
+            entry["turn_id"] = trailers.turn_id
+        if trailers.tokens:
+            entry["tokens"] = trailers.tokens
+        if trailers.cost:
+            entry["cost"] = trailers.cost
+        if trailers.error:
+            entry["error"] = trailers.error
+
+        index["sessions"][session_id]["turns"].append(entry)
+        index["built_at"] = datetime.now(timezone.utc).isoformat()
+
+        self._save_index(index_path, index)
+
+    def _index_dir(self) -> Path:
+        d = Path(".gitlord")
+        d.mkdir(exist_ok=True)
+        return d
+
+    def _load_index(self, path: Path) -> dict:
+        if path.exists():
+            try:
+                with open(path) as f:
+                    return json.load(f)
+            except (json.JSONDecodeError, OSError):
+                pass
+        return {"sessions": {}, "built_at": None}
+
+    def _save_index(self, path: Path, index: dict) -> None:
+        with open(path, "w") as f:
+            json.dump(index, f, indent=2)

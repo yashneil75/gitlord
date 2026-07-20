@@ -88,7 +88,22 @@ class Session:
                 subagent_result=subagent_result,
             )
 
-        return self.log_repo.update_ref_cas(self.branch, new_sha, parent_sha, rebuild_fn=rebuild)
+        result_sha = self.log_repo.update_ref_cas(self.branch, new_sha, parent_sha, rebuild_fn=rebuild)
+
+        try:
+            from gitlord.index import IndexBuilder
+            builder = IndexBuilder(self.log_repo)
+            trailers = self.log_repo.parse_trailers(result_sha)
+            if trailers:
+                builder.append_turn(
+                    session_id=self.session_id,
+                    sha=result_sha,
+                    trailers=trailers,
+                )
+        except Exception:
+            pass  # index rebuild is best-effort
+
+        return result_sha
 
     def _next_turn_number(self) -> int:
         current = self.log_repo.read_ref(self.branch)
