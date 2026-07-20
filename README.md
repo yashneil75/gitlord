@@ -1,6 +1,6 @@
 # GitLord
 
-Agent orchestration framework with Git-backed storage. Every turn is a Git commit — inspectable, rewindable, forkable.
+Agent orchestration framework with Git-backed storage. Every turn is a Git commit: inspectable, rewindable, forkable.
 
 ## Quickstart
 
@@ -23,7 +23,7 @@ for t in turns:
 ## Install
 
 ```
-pip install gitlord           # core only (pydantic)
+pip install gitlord           # core only
 pip install gitlord[all]      # everything
 pip install gitlord[mcp]      # MCP server support
 pip install gitlord[litellm]  # LLM model routing (litellm)
