@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from gitlord.schemas import CommitTrailers, Turn, GitlordError
 
@@ -17,6 +17,27 @@ SUMMARY_RE = re.compile(
     r"^\[turn:(\d+)\]\[role:(\w+)\](?:\[tags:([^\]]*)\])?\s+(.*)$"
 )
 TURN_FILENAME_RE = re.compile(r"^(\d{20})-(\w+)\.json$")
+
+TRAILER_NAME_MAP = {
+    "turn-id": "turn_id",
+    "turn-tokens": "turn_tokens",
+    "turn-cost": "turn_cost",
+    "turn-error": "turn_error",
+    "tool-calls": "tool_calls",
+    "subagent-id": "subagent_id",
+    "parent-sha": "parent_sha",
+    "turn": "turn",
+    "role": "role",
+    "agent": "agent_id",
+    "parent-agent": "parent_agent_id",
+    "tool": "tool",
+    "tokens-in": "tokens_in",
+    "tokens-out": "tokens_out",
+    "cost": "cost",
+    "error": "error",
+    "workspace-commit": "workspace_commit",
+    "subagent-result": "subagent_result",
+}
 
 
 class GitError(GitlordError):
@@ -208,8 +229,6 @@ class GitRepo:
         except GitError:
             return []
 
-    # ── Tree & Commit Construction ──────────────────────────────
-
     def _build_tree_with_turn(
         self, parent_sha: str | None, turn_filename: str, blob_sha: str
     ) -> str:
@@ -260,6 +279,12 @@ class GitRepo:
         tokens_out: int,
         workspace_commit: str | None,
         subagent_result: str | None,
+        turn_id: str = "",
+        cost: float = 0.0,
+        error: str | None = None,
+        turn_tokens: int = 0,
+        subagent_id: str | None = None,
+        parent_sha: str | None = None,
     ) -> str:
         tag_str = ",".join(tags) if tags else ""
         summary = f"turn {turn_number} by {role}"
@@ -272,15 +297,24 @@ class GitRepo:
         header += f" {summary}"
 
         lines = [header, ""]
-        lines.append(f"Turn: {turn_number}")
+        turn_id_val = turn_id or f"t{turn_number}"
+        lines.append(f"Turn-ID: {turn_id_val}")
         lines.append(f"Role: {role}")
         lines.append(f"Agent: {agent_id}")
         lines.append(f"Parent-Agent: {parent_agent_id or 'none'}")
         lines.append(f"Tool: {tool or 'none'}")
+        turn_tokens_val = turn_tokens if turn_tokens > 0 else tokens_in + tokens_out
+        lines.append(f"Turn-Tokens: {turn_tokens_val}")
+        lines.append(f"Turn-Cost: {cost:.6f}")
+        lines.append(f"Turn-Error: {error or 'none'}")
         lines.append(f"Tokens-In: {tokens_in}")
         lines.append(f"Tokens-Out: {tokens_out}")
+        lines.append(f"Cost: {cost:.6f}")
+        lines.append(f"Error: {error or 'none'}")
         lines.append(f"Workspace-Commit: {workspace_commit or 'none'}")
         lines.append(f"Subagent-Result: {subagent_result or 'none'}")
+        lines.append(f"Subagent-ID: {subagent_id or 'none'}")
+        lines.append(f"Parent-SHA: {parent_sha or 'none'}")
         return "\n".join(lines)
 
     def commit_turn(
@@ -306,6 +340,10 @@ class GitRepo:
             tokens_out=turn.tokens_out,
             workspace_commit=turn.workspace_commit,
             subagent_result=subagent_result,
+            turn_id=turn.turn_id,
+            cost=turn.cost,
+            error=turn.error,
+            turn_tokens=turn.tokens_in + turn.tokens_out,
         )
         return self.commit_tree(tree_sha, message, parent=parent_sha)
 
@@ -319,8 +357,6 @@ class GitRepo:
     ) -> str:
         for attempt in range(max_retries):
             try:
-                # old_sha None means "ref must not exist yet" — pass the null
-                # sha so a concurrently created ref is never clobbered.
                 expected = old_sha if old_sha else "0" * 40
                 _git("update-ref", ref, new_sha, expected, repo=self.path)
                 return new_sha
@@ -335,15 +371,13 @@ class GitRepo:
                 if retryable and attempt < max_retries - 1:
                     if rebuild_fn is None:
                         raise CASError(f"CAS update failed for {ref}: {err}") from e
-                    # jittered exponential backoff so contending writers
-                    # don't retry in lockstep and starve each other
                     delay = min(0.002 * (2 ** min(attempt, 6)), 0.2)
                     time.sleep(delay * (0.5 + random.random()))
                     old_sha = self.read_ref(ref)
                     new_sha = rebuild_fn(old_sha)
                     continue
                 raise CASError(f"CAS update failed for {ref}: {err}") from e
-        return new_sha  # unreachable
+        return new_sha
 
     def create_orphan_branch(self, ref: str) -> str:
         empty_tree = self.mktree([])
@@ -392,8 +426,6 @@ class GitRepo:
         except GitError:
             return None
 
-    # ── Updated existing methods ──────────────────────────────
-
     def commit_tree_from_turns(
         self,
         parent_sha: Optional[str],
@@ -416,6 +448,12 @@ class GitRepo:
             tokens_out=trailers.tokens_out,
             workspace_commit=trailers.workspace_commit,
             subagent_result=trailers.subagent_result,
+            turn_id=trailers.turn_id,
+            cost=trailers.cost,
+            error=trailers.error,
+            turn_tokens=trailers.turn_tokens,
+            subagent_id=trailers.subagent_id,
+            parent_sha=trailers.parent_sha,
         )
         return self.commit_tree(tree_sha, message, parent=parent_sha)
 
@@ -431,9 +469,13 @@ class GitRepo:
         lines = msg.split("\n")
         body_start = 0
         tags: list[str] = []
+        role = ""
+        turn_num = 0
         for i, line in enumerate(lines):
             m = SUMMARY_RE.match(line)
             if m:
+                turn_num = int(m.group(1))
+                role = m.group(2)
                 tag_str = m.group(3) or ""
                 tags = [t.strip() for t in tag_str.split(",") if t.strip()] if tag_str else []
                 body_start = i + 2
@@ -451,9 +493,41 @@ class GitRepo:
         if not trailers:
             return None
 
+        turn_id = trailers.get("turn-id", f"t{turn_num}")
+
+        tool_calls_raw = trailers.get("tool-calls", "none")
+        tool_calls = None
+        if tool_calls_raw != "none":
+            try:
+                tool_calls = json.loads(tool_calls_raw)
+            except (json.JSONDecodeError, Exception):
+                pass
+
+        turn_tokens_str = trailers.get("turn-tokens", "0")
+        try:
+            turn_tokens = int(turn_tokens_str)
+        except (ValueError, TypeError):
+            turn_tokens = 0
+
+        if turn_tokens == 0:
+            tokens_in = int(trailers.get("tokens-in", 0))
+            tokens_out = int(trailers.get("tokens-out", 0))
+            turn_tokens = tokens_in + tokens_out
+
+        cost_str = trailers.get("turn-cost", trailers.get("cost", "0"))
+        try:
+            cost = float(cost_str)
+        except (ValueError, TypeError):
+            cost = 0.0
+
+        error = trailers.get("turn-error", trailers.get("error", "none"))
+        if error == "none":
+            error = None
+
         return CommitTrailers(
-            turn=int(trailers.get("turn", 0)),
-            role=trailers.get("role", ""),
+            turn=turn_num,
+            turn_id=turn_id,
+            role=role or trailers.get("role", ""),
             agent_id=trailers.get("agent", ""),
             parent_agent_id=(
                 trailers.get("parent-agent")
@@ -467,6 +541,8 @@ class GitRepo:
             ),
             tokens_in=int(trailers.get("tokens-in", 0)),
             tokens_out=int(trailers.get("tokens-out", 0)),
+            cost=cost,
+            error=error,
             workspace_commit=(
                 trailers.get("workspace-commit")
                 if trailers.get("workspace-commit") != "none"
@@ -478,6 +554,18 @@ class GitRepo:
                 else None
             ),
             tags=tags,
+            tool_calls=tool_calls,
+            turn_tokens=turn_tokens,
+            parent_sha=(
+                trailers.get("parent-sha")
+                if trailers.get("parent-sha") != "none"
+                else None
+            ),
+            subagent_id=(
+                trailers.get("subagent-id")
+                if trailers.get("subagent-id") != "none"
+                else None
+            ),
         )
 
     def get_turn_number_from_branch(self, ref: str) -> int:

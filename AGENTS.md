@@ -10,6 +10,7 @@
 - Real tokenizer via `tiktoken` (optional, falls back to `len//4`)
 - ChromaDB tests all pass (fixed `query_mmr` API drift in chromadb 1.5.9)
 - Real MCP server integration test using `FastMCP` server
+- **Perf improvements (Issue #2):** Standardized structured trailers, auto-index rebuild on append, in-memory query layer, snapshot support, 208 tests (all pass)
 
 ### File Map
 
@@ -18,14 +19,16 @@
 | `gitlord/__init__.py` | Package exports | — |
 | `gitlord/schemas.py` | Pydantic models: Turn, CommitTrailers, MCPServerConfig, etc. | §3 |
 | `gitlord/config.py` | Config loading from file/env | — |
-| `gitlord/git.py` | Git plumbing (hash-object, mktree, commit-tree, update-ref) | §4.4 |
-| `gitlord/session.py` | Session lifecycle (create, turn append, rewind) | §4.1–4.2, §9.2 |
+| `gitlord/git.py` | Git plumbing (hash-object, mktree, commit-tree, update-ref, structured trailers) | §4.4 |
+| `gitlord/session.py` | Session lifecycle (create, turn append, rewind, auto-index, query, snapshot) | §4.1–4.2, §9.2 |
 | `gitlord/subagent.py` | Subagent spawn/completion, queue management, trim | §4.3 |
 | `gitlord/context.py` | Context assembly pipeline, dedup, summarization, cache | §6 |
 | `gitlord/mcp.py` | MCPMon server lifecycle manager | §7 |
 | `gitlord/model.py` | LiteLLM router, tool schema translator | §8 |
 | `gitlord/rag.py` | ChromaDB vector index wrapper | §5.2 |
 | `gitlord/index.py` | JSON index rebuild from git log | §5.1 |
+| `gitlord/query.py` | In-memory query layer (where, group_by, sum, avg, min, max) | Issue #2 |
+| `gitlord/snapshot.py` | Snapshot compression and rebase | Issue #2 |
 | `gitlord/cli.py` | Typer CLI (run, log, tree, show, rewind, diff, index, mcp add, trim) | §9 |
 | `pyproject.toml` | Package definition with optional deps | — |
 
@@ -57,3 +60,8 @@
 - `get_turn_filename` returns the *last* matching turn file (sorted) — important because system turns and content turns coexist in the tree
 - MCP tests use a mock server script (`tests/mock_mcp_server.py`) — real servers need the actual `uvx` or `npx` commands
 - ChromaDB tests are skipped when `chromadb` not installed — 11 skipped tests in `test_rag.py`
+- **Trailer format:** New structured trailers include Turn-ID, Turn-Tokens, Turn-Cost, Turn-Error, and Tool-Calls. Parse on read uses trailers only (no JSON walk). Backward compatible with old Turn/Role/Agent trailers.
+- **Auto-index:** Index is rebuilt on every append by default. Disable with `auto_index=False` in SessionConfig. Index stored at `.gitlord/index.json` (gitignored).
+- **Query layer:** `session.query()` loads the index from `.gitlord/index.json`. Chain `.where()`, `.group_by()`, `.sum()`, `.avg()`, `.min()`, `.max()`, `.count()`, `.list()`.
+- **Snapshot:** `session.snapshot(up_to_turn=N)` compresses turns into a snapshot JSON file. Does not automatically rebase history.
+- **Session validation:** `Session.create` now calls `validate_session_id` before creating the branch — invalid ref names raise `ValueError` with clear message.

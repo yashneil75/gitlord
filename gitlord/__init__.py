@@ -2,7 +2,7 @@
 
 __version__ = "0.1.0"
 
-from gitlord.schemas import GitlordError, Turn, TurnRole, CommitTrailers, MCPServerConfig, AgentConfig, SessionConfig
+from gitlord.schemas import GitlordError, Turn, TurnRole, TurnError, CommitTrailers, MCPServerConfig, AgentConfig, SessionConfig
 from gitlord.config import Config, load_config
 from gitlord.git import GitRepo
 from gitlord.session import Session
@@ -15,11 +15,13 @@ except ImportError:
 from gitlord.model import ModelRouter
 from gitlord.rag import VectorIndex
 from gitlord.index import IndexBuilder
+from gitlord.query import TurnQuery
 
 __all__ = [
     "GitlordError",
     "Turn",
     "TurnRole",
+    "TurnError",
     "CommitTrailers",
     "MCPServerConfig",
     "AgentConfig",
@@ -33,6 +35,7 @@ __all__ = [
     "ModelRouter",
     "VectorIndex",
     "IndexBuilder",
+    "TurnQuery",
 ]
 if MCPMon is not None:
     __all__.append("MCPMon")
