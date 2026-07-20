@@ -45,15 +45,19 @@ def _git(*args: str, repo: str | Path, log_stderr: bool = False) -> str:
 
 
 class GitRepo:
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, bare: bool = True) -> None:
         self.path = Path(path).resolve()
+        self._bare = bare
         self._ensure_repo()
 
     def _ensure_repo(self) -> None:
         if (self.path / ".git").exists() or (self.path / "HEAD").exists():
             return
         self.path.mkdir(parents=True, exist_ok=True)
-        _git("init", "--bare", repo=self.path)
+        if self._bare:
+            _git("init", "--bare", repo=self.path)
+        else:
+            _git("init", repo=self.path)
         _git("config", "user.name", "GitLord Agent", repo=self.path)
         _git("config", "user.email", "agent@gitlord.local", repo=self.path)
 
@@ -140,6 +144,18 @@ class GitRepo:
             return _git("rev-parse", f"{sha}^", repo=self.path)
         except GitError:
             return None
+
+    def get_head(self) -> Optional[str]:
+        try:
+            sha = _git("rev-parse", "HEAD", repo=self.path)
+            if not sha or sha == "HEAD":
+                return None
+            return sha
+        except GitError:
+            return None
+
+    def checkout(self, sha: str) -> None:
+        _git("checkout", "-f", sha, repo=self.path)
 
     def get_tree(self, commit_sha: str) -> str:
         return _git("rev-parse", f"{commit_sha}:", repo=self.path)

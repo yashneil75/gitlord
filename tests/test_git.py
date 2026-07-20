@@ -257,3 +257,27 @@ class TestGitPlumbing:
     def test_get_turn_at_commit_no_turns(self, bare_repo: GitRepo):
         result = bare_repo.get_turn_at_commit("HEAD")
         assert result is None
+
+    def test_get_head_on_bare_repo(self, bare_repo: GitRepo):
+        sha = bare_repo.create_orphan_branch("refs/agents/head-test")
+        assert bare_repo.get_head() is None
+
+    def test_get_head_on_empty_repo(self, tmp_path: Path):
+        repo = GitRepo(tmp_path / "empty", bare=True)
+        assert repo.get_head() is None
+
+    def test_checkout_on_nonbare_repo(self, tmp_path: Path):
+        repo = GitRepo(tmp_path / "ws", bare=False)
+        (repo.path / "file.txt").write_text("original")
+        from gitlord.git import _git
+        _git("add", "file.txt", repo=repo.path)
+        _git("commit", "-m", "v1", repo=repo.path)
+        original_sha = repo.get_head()
+
+        (repo.path / "file.txt").write_text("modified")
+        _git("add", "file.txt", repo=repo.path)
+        _git("commit", "-m", "v2", repo=repo.path)
+        assert (repo.path / "file.txt").read_text() == "modified"
+
+        repo.checkout(original_sha)
+        assert (repo.path / "file.txt").read_text() == "original"

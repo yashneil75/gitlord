@@ -6,7 +6,7 @@ from typing import Optional
 import subprocess
 
 from gitlord.schemas import SessionConfig, Turn, TurnRole
-from gitlord.git import GitRepo
+from gitlord.git import GitRepo, GitError
 
 
 def validate_session_id(session_id: str) -> None:
@@ -54,9 +54,8 @@ class Session:
         session_id: str,
         config: SessionConfig,
     ) -> Session:
-        validate_session_id(session_id)
-        log_repo = GitRepo(config.log_repo_path)
-        workspace_repo = GitRepo(config.workspace_repo_path)
+        log_repo = GitRepo(config.log_repo_path, bare=True)
+        workspace_repo = GitRepo(config.workspace_repo_path, bare=False)
 
         branch = f"refs/agents/{session_id}"
         if log_repo.ref_exists(branch):
@@ -83,21 +82,27 @@ class Session:
         session_id: str,
         config: SessionConfig,
     ) -> Session:
-        log_repo = GitRepo(config.log_repo_path)
-        workspace_repo = GitRepo(config.workspace_repo_path)
+        log_repo = GitRepo(config.log_repo_path, bare=True)
+        workspace_repo = GitRepo(config.workspace_repo_path, bare=False)
         branch = f"refs/agents/{session_id}"
         if not log_repo.ref_exists(branch):
             raise ValueError(f"Session {session_id} not found")  # caller bug
         return cls(log_repo, workspace_repo, config, session_id)
 
     def _commit_turn(self, turn: Turn, subagent_result: str | None = None) -> str:
-        def build(parent_sha: str | None) -> str:
-            # derive the turn number from the parent commit actually used,
-            # so a CAS retry can never produce a stale/duplicate number
-            trailers = (
-                self.log_repo.parse_trailers(parent_sha) if parent_sha else None
-            )
-            turn.turn = trailers.turn + 1 if trailers else 0
+        parent_sha = self.log_repo.read_ref(self.branch)
+        turn.turn = self._next_turn_number()
+        turn.workspace_commit = self.workspace_repo.get_head()
+        new_sha = self.log_repo.commit_turn(
+            parent_sha=parent_sha,
+            turn=turn,
+            agent_id=turn.agent_id,
+            parent_agent_id=turn.parent_agent_id,
+            subagent_result=subagent_result,
+        )
+
+        def rebuild(old_parent: str) -> str:
+            turn.turn = self._next_turn_number()
             return self.log_repo.commit_turn(
                 parent_sha=parent_sha,
                 turn=turn,
@@ -235,6 +240,13 @@ class Session:
             while self.log_repo.ref_exists(new_branch_name):
                 new_branch_name = f"{base}-{n}"
                 n += 1
+
+        target_turn = self.log_repo.get_turn_at_commit(target_sha)
+        if target_turn and target_turn.workspace_commit:
+            try:
+                self.workspace_repo.checkout(target_turn.workspace_commit)
+            except GitError:
+                pass
 
         self.log_repo.update_ref(new_branch_name, target_sha)
 
