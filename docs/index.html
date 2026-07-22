@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitLord — Agent Orchestration, Git-Native</title>
+  <meta name="description" content="An orchestration framework where AI conversations live as commits. Spawn subagents on branches. Rewind to any point.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    :root {
+      --accent: #3b82f6;
+      --accent-light: #93c5fd;
+      --accent-dark: #2563eb;
+      --text: #0f172a;
+      --text-muted: #64748b;
+      --surface: #f8fafc;
+      --glass-bg: rgba(255,255,255,0.72);
+      --glass-border: rgba(255,255,255,0.18);
+      --glass-shadow: rgba(59,130,246,0.06);
+      --code-bg: #0f172a;
+      --ease-smooth: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      color: var(--text);
+      background: #fff;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    .font-display { font-family: 'Space Grotesk', 'Inter', sans-serif; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* ── NAV ── */
+    .nav {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 clamp(1.5rem, 4vw, 3rem);
+      background: var(--glass-bg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+    }
+
+    .nav-logo {
+      font-family: 'Space Grotesk', 'Inter', sans-serif;
+      font-weight: 800;
+      font-size: 1.2rem;
+      letter-spacing: -0.03em;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .nav-links a:hover { color: var(--text); }
+
+    /* ── CONTAINER ── */
+    .container {
+      max-width: 72rem;
+      margin: 0 auto;
+      padding: 0 clamp(1.5rem, 4vw, 3rem);
+    }
+
+    /* ── SECTION SPACING ── */
+    .section { padding: clamp(4rem, 8vw, 7rem) 0; }
+    .section-tint { background: var(--surface); }
+    .section-dark { background: var(--code-bg); color: #f1f5f9; }
+
+    /* ── HERO ── */
+    .hero {
+      position: relative;
+      min-height: 100dvh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      overflow: hidden;
+      padding-top: 64px;
+      isolation: isolate;
+    }
+
+    #hero-canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 2;
+      max-width: 48rem;
+    }
+
+    .hero-eyebrow {
+      display: inline-block;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 1.5rem;
+    }
+
+    .hero h1 {
+      font-family: 'Space Grotesk', 'Inter', sans-serif;
+      font-size: clamp(2.75rem, 6vw, 4.5rem);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+      margin-bottom: 1.5rem;
+    }
+
+    .hero h1 .line2 {
+      display: block;
+      color: var(--accent);
+    }
+
+    .hero-sub {
+      font-size: clamp(1rem, 2vw, 1.15rem);
+      color: var(--text-muted);
+      max-width: 36rem;
+      margin: 0 auto 2.5rem;
+      line-height: 1.7;
+    }
+
+    .hero-ctas {
+      display: flex;
+      gap: 1rem;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.75rem 1.75rem;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s var(--ease-smooth);
+    }
+
+    .btn:active { transform: scale(0.97); }
+
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.1), 0 0 0 1px rgba(59,130,246,0.2);
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-dark);
+      box-shadow: 0 4px 12px rgba(59,130,246,0.3), 0 0 0 1px rgba(59,130,246,0.3);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid rgba(0,0,0,0.12);
+    }
+
+    .btn-ghost:hover {
+      background: rgba(0,0,0,0.03);
+      border-color: rgba(0,0,0,0.2);
+    }
+
+    .install-cmd {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 2rem;
+      padding: 0.6rem 1.25rem;
+      background: rgba(0,0,0,0.04);
+      border: 1px solid rgba(0,0,0,0.08);
+      border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .install-cmd:hover {
+      background: rgba(0,0,0,0.06);
+      border-color: rgba(0,0,0,0.12);
+    }
+
+    .install-cmd .copy-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.75rem;
+      opacity: 0.6;
+    }
+
+    /* ── SECTION HEADERS ── */
+    .section-header {
+      text-align: center;
+      margin-bottom: 4rem;
+    }
+
+    .section-header h2 {
+      font-family: 'Space Grotesk', 'Inter', sans-serif;
+      font-size: clamp(1.75rem, 3.5vw, 2.75rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin-bottom: 1rem;
+    }
+
+    .section-header p {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      max-width: 40rem;
+      margin: 0 auto;
+      line-height: 1.7;
+    }
+
+    /* ── GLASS CARDS ── */
+    .glass-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      box-shadow: 0 1px 3px var(--glass-shadow), 0 8px 32px rgba(59,130,246,0.04);
+      padding: 2rem;
+      transition: transform 0.3s var(--ease-smooth), box-shadow 0.3s;
+    }
+
+    .glass-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px var(--glass-shadow), 0 12px 40px rgba(59,130,246,0.06);
+    }
+
+    /* ── HOW IT WORKS ── */
+    .how-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+    }
+
+    .how-card { text-align: center; }
+
+    .how-icon {
+      width: 48px;
+      height: 48px;
+      margin: 0 auto 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(59,130,246,0.05));
+      border-radius: 12px;
+      color: var(--accent);
+    }
+
+    .how-card h3 {
+      font-family: 'Space Grotesk', 'Inter', sans-serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      letter-spacing: -0.01em;
+    }
+
+    .how-card p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* ── FEATURES SPLIT ── */
+    .feature-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+      padding: 3rem 0;
+    }
+
+    .feature-row + .feature-row {
+      border-top: 1px solid rgba(0,0,0,0.06);
+    }
+
+    .feature-row.reverse .feature-text { order: 2; }
+    .feature-row.reverse .feature-visual { order: 1; }
+
+    .feature-text h3 {
+      font-family: 'Space Grotesk', 'Inter', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 0.75rem;
+    }
+
+    .feature-text p {
+      color: var(--text-muted);
+      line-height: 1.7;
+      max-width: 30rem;
+    }
+
+    .feature-visual { display: flex; justify-content: center; }
+
+    .feature-visual-box {
+      width: 100%;
+      max-width: 28rem;
+      aspect-ratio: 16/10;
+      background: linear-gradient(135deg, rgba(59,130,246,0.06), rgba(59,130,246,0.02));
+      border: 1px solid rgba(59,130,246,0.1);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--accent);
+      opacity: 0.7;
+      overflow: hidden;
+    }
+
+    .feature-visual-box .branch-diagram {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+      line-height: 1.4;
+    }
+
+    .branch-diagram .branch {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .branch-diagram .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent);
+      flex-shrink: 0;
+    }
+
+    .branch-diagram .dot.light { background: var(--accent-light); opacity: 0.5; }
+    .branch-diagram .line {
+      width: 2px;
+      height: 16px;
+      background: var(--accent-light);
+      opacity: 0.3;
+      margin-left: 3px;
+    }
+
+    /* ── BENTO GRID ── */
+    .bento {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    .bento-wide { grid-column: 1 / -1; }
+    .bento .glass-card { padding: 2rem 2.25rem; }
+
+    .bento h3 {
+      font-family: 'Space Grotesk', 'Inter', sans-serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .bento h3 .tag {
+      font-size: 0.65rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent);
+      background: rgba(59,130,246,0.08);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+    }
+
+    .bento p {
+      color: var(--text-muted);
+      font-size: 0.92rem;
+      line-height: 1.65;
+    }
+
+    .bento-code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      background: rgba(0,0,0,0.04);
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
+      margin-top: 1rem;
+      color: var(--text-muted);
+      overflow-x: auto;
+      white-space: pre;
+    }
+
+    /* ── CODE EXAMPLE ── */
+    .code-section {
+      background: var(--code-bg);
+      border-radius: 20px;
+      overflow: hidden;
+      max-width: 52rem;
+      margin: 0 auto;
+      box-shadow: 0 24px 80px rgba(0,0,0,0.2);
+    }
+
+    .code-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.875rem 1.25rem;
+      background: rgba(255,255,255,0.05);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .code-dots { display: flex; gap: 6px; }
+
+    .code-dots span {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.12);
+    }
+
+    .code-dots span:nth-child(1) { background: #ff5f57; }
+    .code-dots span:nth-child(2) { background: #febc2e; }
+    .code-dots span:nth-child(3) { background: #28c840; }
+
+    .code-lang {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: rgba(255,255,255,0.35);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .code-copy {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.5);
+      padding: 0.3rem 0.7rem;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      cursor: pointer;
+      font-family: 'Inter', sans-serif;
+      transition: all 0.2s;
+    }
+
+    .code-copy:hover {
+      background: rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.8);
+    }
+
+    .code-body {
+      padding: 1.5rem;
+      overflow-x: auto;
+    }
+
+    .code-body pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      line-height: 1.7;
+      color: #e2e8f0;
+      white-space: pre;
+    }
+
+    .code-body .kw { color: #c084fc; }
+    .code-body .fn { color: #67e8f9; }
+    .code-body .str { color: #86efac; }
+    .code-body .cm { color: rgba(255,255,255,0.3); }
+    .code-body .op { color: #94a3b8; }
+    .code-body .var { color: #fbbf24; }
+
+    .git-log {
+      margin-top: 1.5rem;
+      padding: 1.25rem 1.5rem;
+      background: rgba(255,255,255,0.03);
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .git-log-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65rem;
+      color: rgba(255,255,255,0.3);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.75rem;
+    }
+
+    .git-log pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      line-height: 1.8;
+      color: rgba(255,255,255,0.5);
+    }
+
+    .git-log .sha { color: var(--accent-light); }
+    .git-log .role { color: rgba(255,255,255,0.7); }
+
+    /* ── ARCHITECTURE TABLE ── */
+    .arch-table {
+      width: 100%;
+      max-width: 48rem;
+      margin: 0 auto;
+      border-collapse: collapse;
+    }
+
+    .arch-table tr {
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      transition: background 0.15s;
+    }
+
+    .arch-table tr:hover { background: rgba(59,130,246,0.03); }
+
+    .arch-table td {
+      padding: 0.9rem 0;
+      vertical-align: top;
+    }
+
+    .arch-table td:first-child {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--accent);
+      width: 10rem;
+      padding-right: 1.5rem;
+    }
+
+    .arch-table td:last-child {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    /* ── CTA SECTION ── */
+    .cta-inner {
+      text-align: center;
+      max-width: 36rem;
+      margin: 0 auto;
+    }
+
+    .cta-inner h2 {
+      font-family: 'Space Grotesk', 'Inter', sans-serif;
+      font-size: clamp(1.75rem, 3.5vw, 2.75rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin-bottom: 1rem;
+      color: #f1f5f9;
+    }
+
+    .cta-inner p {
+      color: #94a3b8;
+      margin-bottom: 2.5rem;
+      line-height: 1.7;
+    }
+
+    .cta-cmd {
+      display: inline-flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 1rem 2rem;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 12px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1rem;
+      color: #f1f5f9;
+      cursor: pointer;
+      transition: all 0.2s;
+      backdrop-filter: blur(12px);
+    }
+
+    .cta-cmd:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: rgba(255,255,255,0.18);
+    }
+
+    .cta-cmd .copy-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+
+    .cta-note {
+      margin-top: 1.5rem;
+      font-size: 0.8rem;
+      color: #475569;
+    }
+
+    /* ── FOOTER ── */
+    .footer {
+      padding: clamp(4rem, 8vw, 6rem) 0 2rem;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    .footer-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      line-height: 0.88;
+      margin-bottom: 2.5rem;
+    }
+
+    .footer-stack span {
+      font-family: 'Space Grotesk', 'Inter', sans-serif;
+      font-size: clamp(5rem, 13vw, 12rem);
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      user-select: none;
+    }
+
+    .footer-stack .f1 { color: var(--text); }
+    .footer-stack .f2 { color: var(--text); opacity: 0.4; }
+    .footer-stack .f3 { color: var(--text); opacity: 0.15; }
+
+    .footer-tagline {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin-bottom: 2rem;
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 2.5rem;
+      list-style: none;
+      margin-bottom: 3rem;
+    }
+
+    .footer-links a {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .footer-links a:hover { color: var(--accent); }
+
+    .footer-copy {
+      font-size: 0.75rem;
+      color: #94a3b8;
+    }
+
+    /* ── SCROLL REVEAL ── */
+    .reveal {
+      opacity: 0;
+      transform: translateY(24px);
+      transition: opacity 0.7s var(--ease-smooth), transform 0.7s var(--ease-smooth);
+    }
+
+    .reveal.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      .nav-links { gap: 1.25rem; }
+      .nav-links .hide-mobile { display: none; }
+      .how-grid { grid-template-columns: 1fr; gap: 1.25rem; }
+      .feature-row { grid-template-columns: 1fr; gap: 2rem; }
+      .feature-row.reverse .feature-text,
+      .feature-row.reverse .feature-visual { order: unset; }
+      .bento { grid-template-columns: 1fr; }
+      .arch-table td:first-child { width: auto; padding-right: 1rem; }
+      .footer-links { flex-direction: column; gap: 1rem; }
+      .hero h1 { font-size: clamp(2rem, 8vw, 3rem); }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ═══ NAV ═══ -->
+  <nav class="nav">
+    <a href="#" class="nav-logo">GitLord</a>
+    <ul class="nav-links">
+      <li><a href="#how-it-works" class="hide-mobile">How it works</a></li>
+      <li><a href="#features">Features</a></li>
+      <li><a href="#architecture" class="hide-mobile">Architecture</a></li>
+      <li><a href="https://github.com/yashn/opencode-work/gitlord-docs" target="_blank" rel="noopener">GitHub</a></li>
+      <li><a href="https://pypi.org/project/gitlord/" target="_blank" rel="noopener">PyPI</a></li>
+    </ul>
+  </nav>
+
+  <!-- ═══ HERO ═══ -->
+  <section class="hero">
+    <canvas id="hero-canvas"></canvas>
+    <div class="hero-content">
+      <span class="hero-eyebrow">Agent orchestration, git-native</span>
+      <h1>Every agent turn.<span class="line2">Stored in git.</span></h1>
+      <p class="hero-sub">An orchestration framework where AI conversations live as commits. Spawn subagents on branches. Rewind to any point.</p>
+      <div class="hero-ctas">
+        <a href="https://github.com/yashn/opencode-work/gitlord-docs" class="btn btn-primary" target="_blank" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+          GitHub
+        </a>
+        <a href="#quickstart" class="btn btn-ghost">Quickstart →</a>
+      </div>
+      <div class="install-cmd" onclick="copyInstall(this)" title="Click to copy">
+        <span class="mono">pip install gitlord[all]</span>
+        <span class="copy-label">copy</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ HOW IT WORKS ═══ -->
+  <section id="how-it-works" class="section section-tint">
+    <div class="container">
+      <div class="section-header reveal">
+        <h2>Not a log. A commit.</h2>
+        <p>Each conversation turn writes a git object. Your agent history is branched, diffed, and reverted — just like code.</p>
+      </div>
+      <div class="how-grid reveal">
+        <div class="glass-card how-card">
+          <div class="how-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><line x1="12" y1="3" x2="12" y2="9"/><line x1="12" y1="15" x2="12" y2="21"/></svg>
+          </div>
+          <h3>Turn → Commit</h3>
+          <p>Every message, tool call, and response becomes a git object with a SHA. Immutable. Inspectable.</p>
+        </div>
+        <div class="glass-card how-card">
+          <div class="how-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+          </div>
+          <h3>Branch → Subagent</h3>
+          <p>Spawn child agents on isolated branches. Each gets its own context window and git history.</p>
+        </div>
+        <div class="glass-card how-card">
+          <div class="how-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          </div>
+          <h3>Rewind → Restore</h3>
+          <p>Jump to any SHA. Fork from there. Your entire history is a navigable graph.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ FEATURES (SPLIT) ═══ -->
+  <section id="features" class="section">
+    <div class="container">
+      <div class="section-header reveal">
+        <h2>Built for agents that ship.</h2>
+        <p>Six capabilities. One framework. Zero lock-in.</p>
+      </div>
+
+      <div class="feature-row reveal">
+        <div class="feature-text">
+          <h3>Subagents</h3>
+          <p>Fork at any turn. Spawn child agents on isolated branches — each with its own context and history. Queue management, depth limits, auto-cleanup. No merge conflicts.</p>
+        </div>
+        <div class="feature-visual">
+          <div class="feature-visual-box">
+            <div class="branch-diagram">
+              <div class="branch"><span class="dot"></span> main session</div>
+              <div class="branch" style="padding-left:1.5rem"><span class="line"></span></div>
+              <div class="branch" style="padding-left:1.5rem"><span class="dot light"></span> subagent-a</div>
+              <div class="branch" style="padding-left:1.5rem"><span class="line"></span></div>
+              <div class="branch" style="padding-left:1.5rem"><span class="dot light"></span> subagent-b</div>
+              <div class="branch"><span class="dot"></span> ↳ result linked via trailer</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature-row reverse reveal">
+        <div class="feature-text">
+          <h3>Context Management</h3>
+          <p>Token budgets, not token chaos. Dedup repeated reads, summarize older turns, vector search across your full history. Never overflow your context window again.</p>
+        </div>
+        <div class="feature-visual">
+          <div class="feature-visual-box">
+            <div class="branch-diagram" style="text-align:left">
+              <div style="color:var(--text-muted);font-size:0.7rem;margin-bottom:0.25rem">context pipeline</div>
+              <div><span style="color:var(--accent)">→</span> dedup repeated file reads</div>
+              <div><span style="color:var(--accent)">→</span> summarize old turns</div>
+              <div><span style="color:var(--accent)">→</span> apply token budget</div>
+              <div><span style="color:var(--accent)">→</span> augment with RAG results</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="feature-row reveal">
+        <div class="feature-text">
+          <h3>MCP Tools</h3>
+          <p>Connect to everything. Filesystem, git, browser, search — via Model Context Protocol. Add any MCP server with one command. Tools flow through to subagents automatically.</p>
+        </div>
+        <div class="feature-visual">
+          <div class="feature-visual-box">
+            <div class="branch-diagram" style="text-align:left">
+              <div style="color:var(--text-muted);font-size:0.7rem;margin-bottom:0.25rem">connected servers</div>
+              <div><span class="dot" style="width:6px;height:6px;display:inline-block;vertical-align:middle"></span> git</div>
+              <div><span class="dot" style="width:6px;height:6px;display:inline-block;vertical-align:middle"></span> filesystem</div>
+              <div><span class="dot" style="width:6px;height:6px;display:inline-block;vertical-align:middle"></span> browser</div>
+              <div><span class="dot" style="width:6px;height:6px;display:inline-block;vertical-align:middle"></span> search</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ FEATURES (BENTO) ═══ -->
+  <section class="section section-tint">
+    <div class="container">
+      <div class="bento reveal">
+        <div class="glass-card">
+          <h3>Model Routing <span class="tag">LiteLLM</span></h3>
+          <p>One interface, any provider. Switch between OpenAI, Anthropic, local models — or mix them per subagent. Cost-optimized routing built in.</p>
+          <div class="bento-code">model: <span class="str">"claude-sonnet-4-20250514"</span>   <span class="cm"># root session</span>
+model: <span class="str">"gpt-4o-mini"</span>               <span class="cm"># subagent (cheaper)</span></div>
+        </div>
+        <div class="glass-card">
+          <h3>Rewind & Diff</h3>
+          <p>Undo without starting over. Step back to any turn, diff between commits, compare branches. Your agent history is a manipulable graph — not a black box.</p>
+          <div class="bento-code">$ gitlord rewind my-session a3f2c1d
+$ gitlord diff a3f2c1d b7e4a9f</div>
+        </div>
+        <div class="glass-card bento-wide">
+          <h3>CLI <span class="tag">terminal</span></h3>
+          <p>Inspect sessions, manage subagents, replay turns — all from the command line. Every operation in the framework is accessible via the CLI.</p>
+          <div class="bento-code">$ gitlord run my-session                    <span class="cm"># start or continue</span>
+$ gitlord log my-session                    <span class="cm"># turn history</span>
+$ gitlord tree my-session                   <span class="cm"># branch structure</span>
+$ gitlord show &lt;sha&gt;                        <span class="cm"># full turn JSON</span>
+$ gitlord rewind my-session &lt;sha&gt;           <span class="cm"># fork from checkpoint</span>
+$ gitlord diff &lt;sha-a&gt; &lt;sha-b&gt;              <span class="cm"># compare turns</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ CODE EXAMPLE ═══ -->
+  <section id="quickstart" class="section">
+    <div class="container">
+      <div class="section-header reveal">
+        <h2>Five lines. Full agent.</h2>
+        <p>Create a session, add turns, spawn a subagent — git handles the rest.</p>
+      </div>
+      <div class="code-section reveal">
+        <div class="code-header">
+          <div class="code-dots"><span></span><span></span><span></span></div>
+          <span class="code-lang">Python</span>
+          <button class="code-copy" onclick="copyCode(this)">Copy</button>
+        </div>
+        <div class="code-body">
+          <pre><span class="kw">from</span> gitlord <span class="kw">import</span> Session, SessionConfig
+
+config <span class="op">=</span> SessionConfig(model<span class="op">=</span><span class="str">"gpt-4o"</span>)
+session <span class="op">=</span> Session.<span class="fn">create</span>(<span class="str">"my-agent"</span>, config)
+
+<span class="cm"># Every turn is a git commit</span>
+session.<span class="fn">add</span>(<span class="str">"user"</span>, <span class="str">"Analyze the codebase for security issues"</span>)
+session.<span class="fn">add</span>(<span class="str">"assistant"</span>, <span class="str">"I'll scan for SQL injection vulnerabilities..."</span>)
+
+<span class="cm"># Spawn a subagent on its own branch</span>
+sub <span class="op">=</span> session.<span class="fn">spawn</span>(<span class="str">"security-scanner"</span>)
+sub.<span class="fn">add</span>(<span class="str">"user"</span>, <span class="str">"Focus on OWASP Top 10"</span>)
+
+<span class="cm"># Rewind to any point</span>
+session.<span class="fn">rewind</span>(session.<span class="fn">log</span>()[<span class="var">0</span>].sha)</pre>
+        </div>
+        <div class="git-log">
+          <div class="git-log-label">$ git log --oneline</div>
+          <pre><span class="sha">a3f2c1d</span>  <span class="role">security-scanner:</span> OWASP Top 10 analysis complete
+<span class="sha">b7e4a9f</span>  <span class="role">assistant:</span> Scanning for SQL injection...
+<span class="sha">c1d8f3a</span>  <span class="role">user:</span> Analyze codebase for security issues
+<span class="sha">e9a2b4c</span>  <span class="role">session:</span> my-agent created</pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ ARCHITECTURE ═══ -->
+  <section id="architecture" class="section section-tint">
+    <div class="container">
+      <div class="section-header reveal">
+        <h2>Modular. Composable. Inspectable.</h2>
+        <p>Every component is a Python module. Swap what you need. Inspect what you don't.</p>
+      </div>
+      <table class="arch-table reveal">
+        <tbody>
+          <tr><td>session.py</td><td>Turn lifecycle, branching, rewind, snapshots</td></tr>
+          <tr><td>subagent.py</td><td>Spawn, queue, depth management, completion</td></tr>
+          <tr><td>context.py</td><td>Dedup, summarization, token budget, cache</td></tr>
+          <tr><td>rag.py</td><td>ChromaDB vector index, semantic search</td></tr>
+          <tr><td>mcp.py</td><td>MCP server management, tool dispatch</td></tr>
+          <tr><td>model.py</td><td>LiteLLM routing, provider abstraction</td></tr>
+          <tr><td>git.py</td><td>Git plumbing — the engine underneath</td></tr>
+          <tr><td>cli.py</td><td>Terminal interface for everything above</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ═══ CTA ═══ -->
+  <section class="section section-dark">
+    <div class="container">
+      <div class="cta-inner reveal">
+        <h2>Start building.</h2>
+        <p>Install in one command. Full stack included.</p>
+        <div class="cta-cmd" onclick="copyInstall(this)" title="Click to copy">
+          <span class="mono">pip install gitlord[all]</span>
+          <span class="copy-label">copy</span>
+        </div>
+        <p class="cta-note">Requires Python 3.11+. Works with OpenAI, Anthropic, or any LiteLLM-supported provider.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══ FOOTER ═══ -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-stack">
+        <span class="f1">GITLORD</span>
+        <span class="f2">GITLORD</span>
+        <span class="f3">GITLORD</span>
+      </div>
+      <p class="footer-tagline">Agent orchestration, git-native.</p>
+      <ul class="footer-links">
+        <li><a href="https://github.com/yashn/opencode-work/gitlord-docs" target="_blank" rel="noopener">GitHub</a></li>
+        <li><a href="https://pypi.org/project/gitlord/" target="_blank" rel="noopener">PyPI</a></li>
+        <li><a href="./">Documentation</a></li>
+      </ul>
+      <p class="footer-copy">MIT License</p>
+    </div>
+  </footer>
+
+  <!-- ═══ SCRIPTS ═══ -->
+  <script>
+    function copyInstall(el) {
+      navigator.clipboard.writeText('pip install gitlord[all]').then(() => {
+        const label = el.querySelector('.copy-label');
+        const orig = label.textContent;
+        label.textContent = 'copied!';
+        setTimeout(() => label.textContent = orig, 1500);
+      });
+    }
+
+    function copyCode(btn) {
+      const pre = btn.closest('.code-section').querySelector('.code-body pre');
+      navigator.clipboard.writeText(pre.textContent).then(() => {
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy', 1500);
+      });
+    }
+
+    // ── Scroll reveal ──
+    const reveals = document.querySelectorAll('.reveal');
+    const revealObserver = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('visible');
+          revealObserver.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.15 });
+    reveals.forEach(el => revealObserver.observe(el));
+
+    // ── Hero canvas animation ──
+    (function() {
+      const canvas = document.getElementById('hero-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      let W, H, dpr;
+      const GRID = 38;
+      const SIZE = 4.5;
+
+      const COLORS = [
+        [59,130,246],   // #3b82f6
+        [147,197,253],  // #93c5fd
+        [96,165,250],   // #60a5fa
+        [219,234,254],  // #dbeafe
+        [59,130,246],
+        [147,197,253],
+      ];
+
+      let pixels = [];
+      let phase = 'idle';
+      let phaseStart = 0;
+      let animFrame;
+
+      function resize() {
+        dpr = Math.min(window.devicePixelRatio || 1, 2);
+        W = canvas.parentElement.clientWidth;
+        H = canvas.parentElement.clientHeight;
+        canvas.width = W * dpr;
+        canvas.height = H * dpr;
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        buildGrid();
+      }
+
+      function buildGrid() {
+        pixels = [];
+        const cols = Math.ceil(W / GRID);
+        const rows = Math.ceil(H / GRID);
+        const cx = W / 2;
+        const cy = H / 2;
+        const maxDist = Math.hypot(cx, cy);
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const x = c * GRID + (GRID - SIZE) / 2;
+            const y = r * GRID + (GRID - SIZE) / 2;
+            const px = x + SIZE / 2;
+            const py = y + SIZE / 2;
+            const dist = Math.hypot(px - cx, py - cy);
+            const angle = Math.atan2(py - cy, px - cx); // radians from center
+            const col = COLORS[(r * cols + c) % COLORS.length];
+            // slight per-element randomness for organic feel
+            const jitter = ((r * 7 + c * 13) % 17) / 17; // 0-1 deterministic hash
+            pixels.push({
+              x, y, dist, angle, color: col, jitter,
+              maxDist, cx, cy,
+              opacity: 0,
+              scale: 1,
+              morph: 0,
+            });
+          }
+        }
+      }
+
+      // easing
+      function easeOutQuad(t) { return 1 - (1-t)*(1-t); }
+      function easeOutCubic(t) { return 1 - Math.pow(1-t, 3); }
+      function easeInOutQuad(t) { return t < 0.5 ? 2*t*t : 1-Math.pow(-2*t+2,2)/2; }
+
+      function drawSquare(x, y, size, opacity, color) {
+        ctx.globalAlpha = opacity;
+        ctx.fillStyle = `rgb(${color[0]},${color[1]},${color[2]})`;
+        ctx.fillRect(x, y, size, size);
+      }
+
+      // draws a chevron pointing RIGHT, then caller rotates via ctx
+      function drawChevronAt(cx, cy, size, opacity, color) {
+        ctx.globalAlpha = opacity;
+        ctx.fillStyle = `rgb(${color[0]},${color[1]},${color[2]})`;
+        const s = size * 1.2;
+        ctx.beginPath();
+        ctx.moveTo(cx - s*0.5, cy - s*0.45);
+        ctx.lineTo(cx + s*0.15, cy - s*0.45);
+        ctx.lineTo(cx + s*0.5, cy);
+        ctx.lineTo(cx + s*0.15, cy + s*0.45);
+        ctx.lineTo(cx - s*0.5, cy + s*0.45);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      function render(now) {
+        ctx.clearRect(0, 0, W, H);
+        const t = (now - phaseStart) / 1000;
+
+        if (phase === 'idle') {
+          // fade in from center, gentle wave
+          for (const p of pixels) {
+            const normDist = p.dist / p.maxDist;
+            const waveT = Math.max(0, Math.min(1, (t * 0.8 - normDist * 0.7 + p.jitter * 0.15)));
+            p.opacity = easeOutCubic(waveT) * 0.4;
+            p.morph = 0;
+            drawSquare(p.x, p.y, SIZE, p.opacity, p.color);
+          }
+          if (t > 1.8) { phase = 'morph'; phaseStart = now; }
+        }
+        else if (phase === 'morph') {
+          // squares gently become chevrons facing outward, center-out
+          for (const p of pixels) {
+            const normDist = p.dist / p.maxDist;
+            const delay = normDist * 0.6 + p.jitter * 0.15;
+            const morphT = Math.max(0, Math.min(1, (t - delay) / 0.5));
+            p.morph = easeInOutQuad(morphT);
+            p.opacity = 0.4 + p.morph * 0.2;
+
+            ctx.save();
+            const pcx = p.x + SIZE/2;
+            const pcy = p.y + SIZE/2;
+            ctx.translate(pcx, pcy);
+            ctx.rotate(p.angle); // face outward from center
+            ctx.translate(-pcx, -pcy);
+
+            if (p.morph < 0.01) {
+              drawSquare(p.x, p.y, SIZE, p.opacity, p.color);
+            } else if (p.morph > 0.99) {
+              drawChevronAt(pcx, pcy, SIZE, p.opacity, p.color);
+            } else {
+              drawSquare(p.x, p.y, SIZE * (1 - p.morph * 0.3), p.opacity * (1 - p.morph), p.color);
+              drawChevronAt(pcx, pcy, SIZE, p.opacity * p.morph, p.color);
+            }
+            ctx.restore();
+          }
+          if (t > 1.3) { phase = 'ripple'; phaseStart = now; }
+        }
+        else if (phase === 'ripple') {
+          // soft ripple wave, each chevron nudges outward along its angle
+          for (const p of pixels) {
+            const normDist = p.dist / p.maxDist;
+            const delay = normDist * 0.7 + p.jitter * 0.12;
+            const waveT = Math.max(0, Math.min(1, (t - delay) / 0.4));
+            const fadeT = Math.max(0, Math.min(1, (t - delay - 0.3) / 0.4));
+
+            // gentle scale pulse
+            const scalePulse = easeOutQuad(waveT) * (1 - easeOutQuad(fadeT));
+            p.scale = 1 + scalePulse * 0.35;
+            p.opacity = 0.55 + scalePulse * 0.25;
+
+            // nudge position outward along angle
+            const nudge = scalePulse * 3;
+
+            ctx.save();
+            const pcx = p.x + SIZE/2 + Math.cos(p.angle) * nudge;
+            const pcy = p.y + SIZE/2 + Math.sin(p.angle) * nudge;
+            ctx.translate(pcx, pcy);
+            ctx.rotate(p.angle);
+            ctx.scale(p.scale, p.scale);
+            ctx.translate(-pcx, -pcy);
+            drawChevronAt(pcx, pcy, SIZE, p.opacity, p.color);
+            ctx.restore();
+          }
+          if (t > 1.5) { phase = 'return'; phaseStart = now; }
+        }
+        else if (phase === 'return') {
+          // chevrons soften back to squares, outside-in
+          const sorted = [...pixels].sort((a, b) => b.dist - a.dist);
+          for (let i = 0; i < sorted.length; i++) {
+            const p = sorted[i];
+            const delay = (i / sorted.length) * 0.45 + p.jitter * 0.08;
+            const morphT = Math.max(0, Math.min(1, (t - delay) / 0.45));
+            p.morph = 1 - easeOutCubic(morphT);
+            p.scale = 1;
+            p.opacity = 0.4 + p.morph * 0.2;
+
+            ctx.save();
+            const pcx = p.x + SIZE/2;
+            const pcy = p.y + SIZE/2;
+            ctx.translate(pcx, pcy);
+            ctx.rotate(p.angle);
+            ctx.translate(-pcx, -pcy);
+
+            if (p.morph > 0.99) {
+              drawSquare(p.x, p.y, SIZE, p.opacity, p.color);
+            } else if (p.morph < 0.01) {
+              drawChevronAt(pcx, pcy, SIZE, p.opacity, p.color);
+            } else {
+              drawSquare(p.x, p.y, SIZE, p.opacity * (1-p.morph), p.color);
+              drawChevronAt(pcx, pcy, SIZE, p.opacity * p.morph, p.color);
+            }
+            ctx.restore();
+          }
+          if (t > 1.3) { phase = 'hold'; phaseStart = now; }
+        }
+        else if (phase === 'hold') {
+          // subtle breathing
+          for (const p of pixels) {
+            const breathe = Math.sin(t * 1.2 + p.jitter * 6.28) * 0.06;
+            p.opacity = 0.4 + breathe;
+            p.morph = 0;
+            drawSquare(p.x, p.y, SIZE, p.opacity, p.color);
+          }
+          if (t > 2.5) { phase = 'morph'; phaseStart = now; }
+        }
+
+        ctx.globalAlpha = 1;
+        animFrame = requestAnimationFrame(render);
+      }
+
+      if (prefersReduced) {
+        resize();
+        ctx.clearRect(0, 0, W, H);
+        for (const p of pixels) drawSquare(p.x, p.y, SIZE, 0.3, p.color);
+        window.addEventListener('resize', () => {
+          resize();
+          ctx.clearRect(0, 0, W, H);
+          for (const p of pixels) drawSquare(p.x, p.y, SIZE, 0.3, p.color);
+        });
+      } else {
+        resize();
+        window.addEventListener('resize', resize);
+        animFrame = requestAnimationFrame(render);
+      }
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) cancelAnimationFrame(animFrame);
+        else { phaseStart = performance.now(); animFrame = requestAnimationFrame(render); }
+      });
+    })();
+  </script>
+</body>
+</html>
