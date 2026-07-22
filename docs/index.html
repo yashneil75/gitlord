@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitLord — Agent Orchestration with Git-Backed Storage</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg: #0a0a0f;
+            --surface: #12121a;
+            --border: #1e1e2e;
+            --text: #e0e0e8;
+            --text-muted: #8888a0;
+            --accent: #6c5ce7;
+            --accent-glow: rgba(108, 92, 231, 0.3);
+            --green: #00d2a0;
+            --orange: #f39c12;
+            --font-mono: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+        /* Header */
+        header {
+            padding: 20px 0;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: rgba(10, 10, 15, 0.85);
+            backdrop-filter: blur(12px);
+            z-index: 100;
+        }
+        header .container { display: flex; align-items: center; justify-content: space-between; }
+        .logo { font-size: 1.4rem; font-weight: 700; color: var(--accent); text-decoration: none; letter-spacing: -0.5px; }
+        .logo span { color: var(--text); font-weight: 400; }
+        nav a { color: var(--text-muted); text-decoration: none; margin-left: 28px; font-size: 0.9rem; transition: color 0.2s; }
+        nav a:hover { color: var(--text); }
+
+        /* Hero */
+        .hero {
+            padding: 100px 0 80px;
+            text-align: center;
+        }
+        .hero h1 {
+            font-size: 3.2rem;
+            font-weight: 800;
+            letter-spacing: -1.5px;
+            line-height: 1.15;
+            margin-bottom: 20px;
+        }
+        .hero h1 .accent { color: var(--accent); }
+        .hero p {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto 36px;
+            line-height: 1.7;
+        }
+        .hero-actions { display: flex; gap: 14px; justify-content: center; }
+        .btn {
+            display: inline-block;
+            padding: 12px 28px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+            cursor: pointer;
+            border: none;
+        }
+        .btn-primary { background: var(--accent); color: #fff; }
+        .btn-primary:hover { box-shadow: 0 0 24px var(--accent-glow); transform: translateY(-1px); }
+        .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+        .btn-secondary:hover { border-color: var(--accent); }
+
+        /* Code block */
+        .hero-code {
+            margin-top: 48px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 24px 28px;
+            text-align: left;
+            max-width: 640px;
+            margin-left: auto;
+            margin-right: auto;
+            overflow-x: auto;
+        }
+        .hero-code pre {
+            font-family: var(--font-mono);
+            font-size: 0.85rem;
+            line-height: 1.7;
+            color: var(--text-muted);
+        }
+        .hero-code .kw { color: var(--accent); }
+        .hero-code .fn { color: var(--green); }
+        .hero-code .str { color: var(--orange); }
+        .hero-code .cmt { color: #555570; }
+
+        /* Features */
+        .features { padding: 80px 0; }
+        .features h2 { text-align: center; font-size: 2rem; margin-bottom: 48px; letter-spacing: -0.5px; }
+        .feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+        .feature-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 28px;
+            transition: border-color 0.2s;
+        }
+        .feature-card:hover { border-color: var(--accent); }
+        .feature-icon { font-size: 1.6rem; margin-bottom: 12px; }
+        .feature-card h3 { font-size: 1.05rem; margin-bottom: 8px; }
+        .feature-card p { font-size: 0.88rem; color: var(--text-muted); line-height: 1.6; }
+
+        /* Architecture preview */
+        .arch { padding: 80px 0; border-top: 1px solid var(--border); }
+        .arch h2 { text-align: center; font-size: 2rem; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .arch .subtitle { text-align: center; color: var(--text-muted); margin-bottom: 40px; font-size: 0.95rem; }
+        .arch-diagram {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 32px;
+            font-family: var(--font-mono);
+            font-size: 0.8rem;
+            line-height: 1.8;
+            color: var(--text-muted);
+            overflow-x: auto;
+            white-space: pre;
+        }
+        .arch-diagram .highlight { color: var(--accent); }
+        .arch-diagram .green { color: var(--green); }
+
+        /* Install */
+        .install { padding: 80px 0; border-top: 1px solid var(--border); text-align: center; }
+        .install h2 { font-size: 2rem; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .install .subtitle { color: var(--text-muted); margin-bottom: 32px; font-size: 0.95rem; }
+        .install-cmd {
+            display: inline-block;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 14px 28px;
+            font-family: var(--font-mono);
+            font-size: 0.95rem;
+            color: var(--green);
+            user-select: all;
+        }
+
+        /* Footer */
+        footer {
+            border-top: 1px solid var(--border);
+            padding: 32px 0;
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.82rem;
+        }
+        footer a { color: var(--accent); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2rem; }
+            .feature-grid { grid-template-columns: 1fr; }
+            .hero-actions { flex-direction: column; align-items: center; }
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="container">
+        <a href="#" class="logo">Git<span>Lord</span></a>
+        <nav>
+            <a href="#features">Features</a>
+            <a href="#architecture">Architecture</a>
+            <a href="#install">Install</a>
+            <a href="./api/schemas.html">API</a>
+            <a href="https://github.com/yashneil75/gitlord">GitHub</a>
+        </nav>
+    </div>
+</header>
+
+<section class="hero">
+    <div class="container">
+        <h1>Every turn is a <span class="accent">Git commit</span></h1>
+        <p>Agent orchestration framework with git-backed storage. Inspectable, rewindable, forkable. Every decision tracked. Every state recoverable.</p>
+        <div class="hero-actions">
+            <a href="#install" class="btn btn-primary">Get Started</a>
+            <a href="./api/schemas.html" class="btn btn-secondary">API Reference</a>
+        </div>
+        <div class="hero-code">
+            <pre><span class="kw">from</span> gitlord <span class="kw">import</span> Session, SessionConfig
+
+config = <span class="fn">SessionConfig</span>(log_repo_path=<span class="str">"log"</span>)
+session = Session.<span class="fn">create</span>(<span class="str">"my-agent"</span>, config)
+session.<span class="fn">append_user_turn</span>(<span class="str">"What's the weather in London?"</span>)
+
+<span class="cmt"># Every turn is a git commit — inspectable, rewindable</span>
+<span class="kw">for</span> turn <span class="kw">in</span> session.<span class="fn">get_turns</span>():
+    <span class="fn">print</span>(<span class="str">f"  [{turn.role}] {turn.content[:80]}"</span>)</pre>
+        </div>
+    </div>
+</section>
+
+<section class="features" id="features">
+    <div class="container">
+        <h2>Why GitLord</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="feature-icon">[git]</div>
+                <h3>Git-Backed Storage</h3>
+                <p>Every agent turn is a real git commit. Full history, branching, and inspection using standard git tooling. No custom databases.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">[rewind]</div>
+                <h3>Rewind &amp; Fork</h3>
+                <p>Jump back to any point in your agent's history. Fork a new branch from any turn. Original history is never mutated.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">[sub]</div>
+                <h3>Subagent Orchestration</h3>
+                <p>Spawn subagents on isolated branches. Parallel execution with automatic result integration via commit trailers.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">[mcp]</div>
+                <h3>MCP Tool Integration</h3>
+                <p>Connect any MCP server for tools — filesystem, browser, search, custom. Auto-discovery, crash recovery, tool namespacing.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">[ctx]</div>
+                <h3>Smart Context Assembly</h3>
+                <p>Incremental context building with dedup, summarization, and token budgets. Only processes new turns since last assembly.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">[rag]</div>
+                <h3>Vector Index &amp; RAG</h3>
+                <p>Built-in ChromaDB integration. Index turns and external documents. Semantic search across your entire agent history.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="arch" id="architecture">
+    <div class="container">
+        <h2>Architecture</h2>
+        <p class="subtitle">Plumbing-first design. No working tree for log writes. Concurrent subagents without lock contention.</p>
+        <div class="arch-diagram">
+┌─────────────────────────────────────────────────────────────────────┐
+│  <span class="highlight">refs/agents/&lt;session-id&gt;</span>                                           │
+│  ├── turns/00000000000000000000-system.json                       │
+│  ├── turns/00000000000000000001-user.json                        │
+│  ├── turns/00000000000000000002-assistant.json                   │
+│  └── ...                                                          │
+│                                                                     │
+│  <span class="highlight">refs/agents/sub/&lt;session-id&gt;/&lt;subagent-id&gt;</span>               │
+│  ├── turns/00000000000000000000-system.json                       │
+│  └── turns/00000000000000000001-tool_result.json                  │
+└─────────────────────────────────────────────────────────────────────┘
+
+  <span class="green">Session.create()</span> ──→ <span class="highlight">create_orphan_branch</span> ──→ system turn commit
+       │
+  <span class="green">append_turn()</span> ──→ hash-object ──→ mktree ──→ commit-tree ──→ <span class="highlight">update-ref (CAS)</span>
+       │
+  <span class="green">rewind()</span> ──→ verify commit on branch ──→ <span class="highlight">new branch at target SHA</span>
+       │
+  <span class="green">SubagentManager.spawn()</span> ──→ branch at parent tip ──→ subagent turns
+       │
+  <span class="green">SubagentManager.complete()</span> ──→ enqueue in parent queue ──→ <span class="highlight">Subagent-Result trailer</span></div>
+    </div>
+</section>
+
+<section class="install" id="install">
+    <div class="container">
+        <h2>Install</h2>
+        <p class="subtitle">Python 3.11+. Core runs with just pydantic. Add optional extras as needed.</p>
+        <div class="install-cmd">pip install gitlord[all]</div>
+        <div style="margin-top: 20px; color: var(--text-muted); font-size: 0.88rem;">
+            Core: <code>pip install gitlord</code> &nbsp;|&nbsp;
+            MCP: <code>pip install gitlord[mcp]</code> &nbsp;|&nbsp;
+            LLM: <code>pip install gitlord[litellm]</code> &nbsp;|&nbsp;
+            RAG: <code>pip install gitlord[chromadb]</code>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="container">
+        <p>GitLord v0.1.0 &mdash; MIT License &mdash; <a href="https://github.com/yashneil75/gitlord">GitHub</a></p>
+    </div>
+</footer>
+
+</body>
+</html>
