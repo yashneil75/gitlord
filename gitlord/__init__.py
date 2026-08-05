@@ -1,6 +1,6 @@
 """GitLord — Agent orchestration framework with git-backed storage."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from gitlord.schemas import GitlordError, Turn, TurnRole, TurnError, CommitTrailers, MCPServerConfig, AgentConfig, SessionConfig
 from gitlord.config import Config, load_config
